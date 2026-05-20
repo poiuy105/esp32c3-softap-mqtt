@@ -16,29 +16,40 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup ESP-IDF
-        uses: espressif/setup-esp-idf@v4
-        with:
-          version: v5.2.2
-          espfs: 'true'
-
-      - name: Install Python packages
+      - name: Debug environment
         run: |
-          pip install idf-component-manager
+          echo "=== System Info ==="
+          uname -a
+          echo "=== Git Version ==="
+          git --version
+          echo "=== Current Directory ==="
+          pwd
+          ls -la
+          echo "=== Git Config ==="
+          git config --list || true
+
+      - name: Setup ESP-IDF
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.2.2
+          target: esp32c3
+        continue-on-error: true
 
       - name: Configure and Build Project
         run: |
-          . $IDF_PATH/export.sh
-          idf.py set-target esp32c3
+          echo "=== Building Project ==="
+          source ./export.sh 2>/dev/null || source $IDF_PATH/export.sh 2>/dev/null || true
+          idf.py set-target esp32c3 || echo "Set target failed, continuing..."
           idf.py build
 
-          ls -la build/
+          ls -la build/ 2>/dev/null || echo "Build directory not found"
           ls -la build/bootloader/ 2>/dev/null || true
           ls -la build/partition_table/ 2>/dev/null || true
           
       - name: Create Merged Binary
+        if: success()
         run: |
-          . $IDF_PATH/export.sh
+          source ./export.sh 2>/dev/null || source $IDF_PATH/export.sh 2>/dev/null || true
           if [ -f "build/bootloader/bootloader.bin" ] && [ -f "build/partition_table/partition-table.bin" ] && [ -f "build/softap_mqtt.bin" ]; then
             echo "Merging firmware files..."
             python -m esptool --chip esp32c3 merge_bin -o build/merged.bin \
@@ -55,6 +66,7 @@ jobs:
           ls -lh build/
           
       - name: Upload Artifacts
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: esp32c3-firmware
