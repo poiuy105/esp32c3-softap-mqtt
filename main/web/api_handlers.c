@@ -1,10 +1,10 @@
 #include <string.h>
 #include <stdlib.h>
-#include "cjson/cJSON.h"
 #include "esp_log.h"
 #include "esp_http_server.h"
 #include "nvs_config.h"
 #include "state_machine.h"
+#include "cJSON.h"
 
 static const char *TAG = "api_handlers";
 
