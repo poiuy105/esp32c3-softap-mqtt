@@ -50,16 +50,17 @@ esp_err_t app_mqtt_connect(const char *broker_uri, uint16_t port,
 {
     ESP_LOGI(TAG, "Connecting to MQTT broker...");
     
-    // ESP-IDF v5.1 MQTT config structure
-    esp_mqtt_client_config_t mqtt_cfg = {};
-    mqtt_cfg.broker.address.uri = broker_uri;
+    // ESP-IDF v5.0 MQTT config structure
+    esp_mqtt_client_config_t mqtt_cfg = {
+        .uri = broker_uri,
+    };
     
-    if (username != NULL) {
-        mqtt_cfg.credentials.username = username;
+    if (username != NULL && strlen(username) > 0) {
+        mqtt_cfg.username = username;
     }
     
-    if (password != NULL) {
-        mqtt_cfg.credentials.authentication.password = password;
+    if (password != NULL && strlen(password) > 0) {
+        mqtt_cfg.password = password;
     }
     
     mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
