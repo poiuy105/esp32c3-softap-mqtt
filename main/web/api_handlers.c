@@ -1,7 +1,8 @@
 #include <string.h>
-#include "api_handlers.h"
+#include <stdlib.h>
+#include "cjson/cJSON.h"
 #include "esp_log.h"
-#include "cJSON.h"
+#include "esp_http_server.h"
 #include "nvs_config.h"
 #include "state_machine.h"
 
@@ -47,7 +48,7 @@ static esp_err_t post_config_handler(httpd_req_t *req)
     cJSON *root = cJSON_Parse(buf);
     if (!root) {
         const char *error_ptr = cJSON_GetErrorPtr();
-        ESP_LOGE(TAG, "JSON parse error: %s", error_ptr);
+        ESP_LOGE(TAG, "JSON parse error: %s", error_ptr ? error_ptr : "unknown");
         return ESP_FAIL;
     }
     

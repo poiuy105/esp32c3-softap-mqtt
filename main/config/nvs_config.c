@@ -224,7 +224,7 @@ bool nvs_is_config_valid(app_config_t *config)
 {
     if (strlen(config->wifi_ssid) == 0) return false;
     if (strlen(config->mqtt_uri) == 0) return false;
-    if (config->mqtt_port == 0 || config->mqtt_port > 65535) return false;
+    if (config->mqtt_port == 0) return false;
     
     return true;
 }
