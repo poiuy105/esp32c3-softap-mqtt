@@ -16,27 +16,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup ESP-IDF
-        uses: espressif/esp-idf-ci-action@v1
-        with:
-          esp_idf_version: v5.2.2
-          target: esp32c3
+      - name: Install ESP-IDF
+        run: |
+          git clone --recursive --depth 1 --branch v5.2.2 https://github.com/espressif/esp-idf.git ~/esp-idf
+          ~/esp-idf/install.sh esp32c3
+          ~/esp-idf/export.sh
 
       - name: Configure and Build Project
         id: build
         run: |
-          # Set target and build
+          source ~/esp-idf/export.sh
           idf.py set-target esp32c3
           idf.py build
 
-          # Show build directory
           ls -la build/
           ls -la build/bootloader/ 2>/dev/null || true
           ls -la build/partition_table/ 2>/dev/null || true
           
       - name: Create Merged Binary
         run: |
-          # Merge the firmware files if they exist
+          source ~/esp-idf/export.sh
           if [ -f "build/bootloader/bootloader.bin" ] && [ -f "build/partition_table/partition-table.bin" ] && [ -f "build/softap_mqtt.bin" ]; then
             echo "Merging firmware files..."
             python -m esptool --chip esp32c3 merge_bin -o build/merged.bin \
@@ -45,7 +44,6 @@ jobs:
               0x8000 build/partition_table/partition-table.bin \
               0x10000 build/softap_mqtt.bin
           elif ls build/*.bin 1>/dev/null 2>&1; then
-            # If no separate files, try to find the main bin
             MAIN_BIN=$(ls build/*.bin | head -1)
             echo "Using main binary: $MAIN_BIN"
             cp "$MAIN_BIN" build/merged.bin
