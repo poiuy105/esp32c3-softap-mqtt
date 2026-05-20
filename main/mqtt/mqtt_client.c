@@ -48,27 +48,17 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 esp_err_t app_mqtt_connect(const char *broker_uri, uint16_t port, 
                                 const char *username, const char *password)
 {
-    char full_uri[256];
-    
-    // Check if broker_uri already contains protocol prefix
-    if (strncmp(broker_uri, "mqtt://", 7) == 0 || strncmp(broker_uri, "mqtts://", 8) == 0) {
-        strncpy(full_uri, broker_uri, sizeof(full_uri) - 1);
-        full_uri[sizeof(full_uri) - 1] = '\0';
-    } else {
-        snprintf(full_uri, sizeof(full_uri), "mqtt://%s:%d", broker_uri, port);
-    }
-    
-    ESP_LOGI(TAG, "Connecting to MQTT broker: %s", full_uri);
+    ESP_LOGI(TAG, "Connecting to MQTT broker...");
     
     // ESP-IDF v5.1 MQTT config structure
-    esp_mqtt_client_config_t mqtt_cfg = {0};
-    mqtt_cfg.broker.address.uri = full_uri;
+    esp_mqtt_client_config_t mqtt_cfg = {};
+    mqtt_cfg.broker.address.uri = broker_uri;
     
-    if (username != NULL && strlen(username) > 0) {
+    if (username != NULL) {
         mqtt_cfg.credentials.username = username;
     }
     
-    if (password != NULL && strlen(password) > 0) {
+    if (password != NULL) {
         mqtt_cfg.credentials.authentication.password = password;
     }
     
