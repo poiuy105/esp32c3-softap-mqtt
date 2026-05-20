@@ -22,6 +22,12 @@ static esp_err_t get_config_handler(httpd_req_t *req)
     char *json_str = cJSON_Print(root);
     cJSON_Delete(root);
     
+    if (json_str == NULL) {
+        ESP_LOGE(TAG, "Failed to print JSON");
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory error");
+        return ESP_FAIL;
+    }
+    
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, json_str, strlen(json_str));
     free(json_str);
@@ -31,7 +37,7 @@ static esp_err_t get_config_handler(httpd_req_t *req)
 
 static esp_err_t post_config_handler(httpd_req_t *req)
 {
-    char buf[256];
+    char buf[512];
     int ret = httpd_req_recv(req, buf, sizeof(buf) - 1);
     if (ret <= 0) {
         return ESP_FAIL;
@@ -66,6 +72,14 @@ static esp_err_t post_config_handler(httpd_req_t *req)
         char *resp_str = cJSON_Print(response);
         cJSON_Delete(response);
         
+        if (resp_str == NULL) {
+            ESP_LOGE(TAG, "Failed to print JSON response");
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory error");
+            cJSON_Delete(root);
+            state_machine_trigger_event(EVENT_CONFIG_RECEIVED);
+            return ESP_FAIL;
+        }
+        
         httpd_resp_set_type(req, "application/json");
         httpd_resp_send(req, resp_str, strlen(resp_str));
         free(resp_str);
@@ -87,6 +101,12 @@ static esp_err_t get_status_handler(httpd_req_t *req)
     
     char *json_str = cJSON_Print(root);
     cJSON_Delete(root);
+    
+    if (json_str == NULL) {
+        ESP_LOGE(TAG, "Failed to print JSON");
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory error");
+        return ESP_FAIL;
+    }
     
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, json_str, strlen(json_str));

@@ -12,7 +12,7 @@ esp_err_t wifi_manager_init(void)
 {
     ESP_LOGI(TAG, "Initializing WiFi manager");
     
-    ESP_ERROR_CHECK(esp_netif_init());
+    // esp_netif_init() is called in app_main, don't call it here
     
     return ESP_OK;
 }

@@ -38,7 +38,7 @@ esp_err_t nvs_save_wifi_config(const char *ssid, const char *password)
     err = nvs_commit(handle);
     nvs_close(handle);
     
-    ESP_LOGI(TAG, "WiFi config saved successfully");
+    ESP_LOGI(TAG, "WiFi config saved successfully (SSID: %s)", ssid);
     return err;
 }
 

@@ -41,7 +41,14 @@ esp_err_t mqtt_client_connect(const char *broker_uri, uint16_t port,
                                 const char *username, const char *password)
 {
     char full_uri[256];
-    snprintf(full_uri, sizeof(full_uri), "mqtt://%s:%d", broker_uri, port);
+    
+    // Check if broker_uri already contains protocol prefix
+    if (strncmp(broker_uri, "mqtt://", 7) == 0 || strncmp(broker_uri, "mqtts://", 8) == 0) {
+        strncpy(full_uri, broker_uri, sizeof(full_uri) - 1);
+        full_uri[sizeof(full_uri) - 1] = '\0';
+    } else {
+        snprintf(full_uri, sizeof(full_uri), "mqtt://%s:%d", broker_uri, port);
+    }
     
     ESP_LOGI(TAG, "Connecting to MQTT broker: %s", full_uri);
     

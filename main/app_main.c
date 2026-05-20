@@ -1,6 +1,7 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/event_groups.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_netif.h"
@@ -13,6 +14,12 @@
 #include "mqtt_client.h"
 #include "http_server.h"
 #include "softap.h"
+#include "event_handlers.h"
+
+#define WIFI_CONNECTED_BIT BIT0
+#define WIFI_FAIL_BIT      BIT1
+
+static EventGroupHandle_t wifi_event_group;
 
 static const char *TAG = "app_main";
 
@@ -56,11 +63,36 @@ static void app_task(void *arg)
                     http_server_stop();
                     wifi_manager_stop_softap();
                     vTaskDelay(pdMS_TO_TICKS(1000));
+                    
+                    // Create event group for WiFi connection sync
+                    wifi_event_group = xEventGroupCreate();
+                    event_handlers_set_wifi_event_group(wifi_event_group);
+                    
+                    // Start WiFi STA connection
                     wifi_manager_connect_sta(app_config.wifi_ssid, app_config.wifi_password);
+                    
+                    // Wait for WiFi connection with timeout (30 seconds)
+                    ESP_LOGI(TAG, "Waiting for WiFi connection...");
+                    EventBits_t bits = xEventGroupWaitBits(wifi_event_group,
+                                                           WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+                                                           pdFALSE,
+                                                           pdFALSE,
+                                                           pdMS_TO_TICKS(30000));
+                    
+                    if (bits & WIFI_CONNECTED_BIT) {
+                        ESP_LOGI(TAG, "WiFi connected successfully");
+                        state_machine_trigger_event(EVENT_WIFI_CONNECTED);
+                    } else {
+                        ESP_LOGE(TAG, "WiFi connection failed or timeout");
+                        state_machine_trigger_event(EVENT_WIFI_DISCONNECTED);
+                    }
+                    
+                    vEventGroupDelete(wifi_event_group);
+                    wifi_event_group = NULL;
                     break;
                     
                 case STATE_CONNECTING:
-                    ESP_LOGI(TAG, "Connecting to WiFi and MQTT...");
+                    ESP_LOGI(TAG, "Connecting to MQTT...");
                     mqtt_client_connect(app_config.mqtt_uri, app_config.mqtt_port,
                                       app_config.mqtt_username, app_config.mqtt_password);
                     break;
@@ -103,11 +135,12 @@ void app_main(void)
     ESP_LOGI(TAG, "Config loaded: SSID=%s, MQTT=%s:%d",
              app_config.wifi_ssid, app_config.mqtt_uri, app_config.mqtt_port);
     
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
     ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
     
     app_init_state_machine();
     wifi_manager_init();
+    event_handlers_register_wifi_handler();
     mqtt_client_init();
     
     xTaskCreate(&app_task, "app_task", 4096, NULL, 5, NULL);

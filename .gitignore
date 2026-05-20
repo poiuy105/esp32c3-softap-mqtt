@@ -1,83 +1,50 @@
-# ESP-IDF build artifacts
+# ESP-IDF (should be cloned by CI, not committed)
+esp-idf/
+
+# ESP-IDF build artifacts (local build only)
 /build/
 /sdkconfig
 /sdkconfig.old
 /.pio/
-/.vscode/
-/.idea/
-*.pyc
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
+/esp_mqtt/build/
+/esp_mqtt/firmware/
 
 # CMake artifacts
 cmake_install.cmake
 CMakeCache.txt
 CMakeFiles/
 Makefile
-*.cmake
-!CMakeLists.txt
-!cmake/*.cmake
 
-# Partition tables
-partition_table/
-
-# Bootloader and app binaries
-bootloader/
-bootloader.bin
-bootloader.elf
+# Partition tables and binaries (local build)
+/partition_table/
+/bootloader/
 *.bin
 *.elf
 *.map
 
-# Temporary files
-*.log
-*.tmp
-temp/
-tmp/
-
-# ESP-IDF directory (if present in project)
-esp-idf/
-esp-mqtt/
-esp-web-mqtt-config/
-temp_repo/
-
-# IDE and editor files
-*.su
-*.idb
-*.pdb
-.vscode/
-.vs/
-.idea/
+# IDE files
+/.vscode/
+/.vs/
+/.idea/
 *.swp
 *.swo
 *~
-*.orig
 .cproject
 .project
 .settings/
 
-# esp_mqtt specific
-esp_mqtt/build/
-esp_mqtt/firmware/
-esp_mqtt/include/user_config.local.h
+# OS files
+.DS_Store
+Thumbs.db
 
-# Deployment and helper scripts (optional, keep if needed)
-# COPY_AND_PASTE.txt
-# DEPLOYMENT.md
-# FINAL_DEPLOY.sh
-# GIT_BASH_COMMANDS.txt
-# QUICKSTART.md
-# complete-deploy.bat
-# deploy-full.sh
-# deploy.bat
-# deploy.ps1
-# quick-start.sh
+# Log files
+*.log
+*.tmp
+/temp/
+/tmp/
 
-# Documentation files (optional)
-/docs/
+# Documentation (keep in repo if needed)
+# /docs/
 *.pdf
 *.docx
 
