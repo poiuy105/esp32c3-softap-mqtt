@@ -59,7 +59,11 @@ static void app_task(void *arg)
                     
                 case STATE_SOFTAP:
                     ESP_LOGI(TAG, "Starting SoftAP mode");
-                    wifi_manager_start_softap(DEFAULT_SOFTAP_SSID, DEFAULT_SOFTAP_PASSWORD);
+                    // Generate SSID with MAC suffix for unique identification
+                    char softap_ssid[32];
+                    softap_generate_ssid_with_mac(softap_ssid, sizeof(softap_ssid));
+                    // Start SoftAP with empty password (open network)
+                    wifi_manager_start_softap(softap_ssid, "");
                     http_server_start();
                     break;
                     
