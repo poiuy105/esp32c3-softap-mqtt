@@ -44,10 +44,6 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
                     event->data_len, event->data);
             break;
             
-        case MQTT_EVENT_ERROR:
-            ESP_LOGE(TAG, "MQTT error");
-            break;
-            
         default:
             break;
     }
@@ -113,7 +109,7 @@ esp_err_t mqtt_client_subscribe(const char *topic, int qos)
     return ESP_FAIL;
 }
 
-esp_err_t mqtt_client_publish(const char *topic, const char *payload, int qos, bool retain)
+esp_err_t mqtt_client_publish(const char *topic, const char *payload, int qos, int retain)
 {
     if (mqtt_client && is_connected) {
         int msg_id = esp_mqtt_client_publish(mqtt_client, topic, payload, 0, qos, retain);

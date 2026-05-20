@@ -22,4 +22,5 @@ idf_component_register(
         nvs_flash 
         mqtt 
         esp_http_server
+        json
 )
