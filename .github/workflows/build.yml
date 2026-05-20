@@ -16,10 +16,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Clone ESP-IDF v5.1.4 (Stable)
+      - name: Clone ESP-IDF v4.4.7 (Stable LTS)
         run: |
           rm -rf esp-idf
-          git clone --recursive --depth 1 --branch v5.1.4 https://github.com/espressif/esp-idf.git esp-idf
+          git clone --recursive --depth 1 --branch v4.4.7 https://github.com/espressif/esp-idf.git esp-idf
 
       - name: Install ESP-IDF
         run: |
