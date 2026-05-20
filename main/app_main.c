@@ -12,7 +12,7 @@
 #include "nvs_config.h"
 #include "state_machine.h"
 #include "wifi_manager.h"
-#include "mqtt_client.h"
+#include "app_mqtt.h"
 #include "http_server.h"
 #include "softap.h"
 #include "event_handlers.h"
@@ -94,13 +94,13 @@ static void app_task(void *arg)
                     
                 case STATE_CONNECTING:
                     ESP_LOGI(TAG, "Connecting to MQTT...");
-                    mqtt_client_connect(app_config.mqtt_uri, app_config.mqtt_port,
+                    app_mqtt_connect(app_config.mqtt_uri, app_config.mqtt_port,
                                       app_config.mqtt_username, app_config.mqtt_password);
                     break;
                     
                 case STATE_RUNNING:
                     ESP_LOGI(TAG, "System running!");
-                    mqtt_client_subscribe("esp32/command", 0);
+                    app_mqtt_subscribe("esp32/command", 0);
                     break;
                     
                 case STATE_ERROR:
@@ -142,7 +142,6 @@ void app_main(void)
     app_init_state_machine();
     wifi_manager_init();
     event_handlers_register_wifi_handler();
-    mqtt_client_init();
     
     xTaskCreate(&app_task, "app_task", 4096, NULL, 5, NULL);
 }

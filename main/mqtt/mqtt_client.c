@@ -1,8 +1,7 @@
 #include <string.h>
-#include "mqtt_client.h"
+#include "app_mqtt.h"
 #include "esp_log.h"
 #include "esp_event.h"
-#include "mqtt_client.h"
 
 static const char *TAG = "mqtt_client";
 
@@ -39,9 +38,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             break;
             
         case MQTT_EVENT_DATA:
-            ESP_LOGI(TAG, "MQTT data received: topic=%.*s, data=%.*s", 
-                    event->topic_len, event->topic, 
-                    event->data_len, event->data);
+            ESP_LOGI(TAG, "MQTT data received");
             break;
             
         default:
@@ -49,7 +46,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     }
 }
 
-esp_err_t mqtt_client_connect(const char *broker_uri, uint16_t port, 
+esp_err_t app_mqtt_connect(const char *broker_uri, uint16_t port, 
                                 const char *username, const char *password)
 {
     char full_uri[256];
@@ -88,7 +85,7 @@ esp_err_t mqtt_client_connect(const char *broker_uri, uint16_t port,
     return esp_mqtt_client_start(mqtt_client);
 }
 
-esp_err_t mqtt_client_disconnect(void)
+esp_err_t app_mqtt_disconnect(void)
 {
     if (mqtt_client) {
         esp_mqtt_client_stop(mqtt_client);
@@ -99,7 +96,7 @@ esp_err_t mqtt_client_disconnect(void)
     return ESP_OK;
 }
 
-esp_err_t mqtt_client_subscribe(const char *topic, int qos)
+esp_err_t app_mqtt_subscribe(const char *topic, int qos)
 {
     if (mqtt_client && is_connected) {
         int msg_id = esp_mqtt_client_subscribe(mqtt_client, topic, qos);
@@ -109,7 +106,7 @@ esp_err_t mqtt_client_subscribe(const char *topic, int qos)
     return ESP_FAIL;
 }
 
-esp_err_t mqtt_client_publish(const char *topic, const char *payload, int qos, int retain)
+esp_err_t app_mqtt_publish(const char *topic, const char *payload, int qos, int retain)
 {
     if (mqtt_client && is_connected) {
         int msg_id = esp_mqtt_client_publish(mqtt_client, topic, payload, 0, qos, retain);
@@ -119,7 +116,7 @@ esp_err_t mqtt_client_publish(const char *topic, const char *payload, int qos, i
     return ESP_FAIL;
 }
 
-bool mqtt_client_is_connected(void)
+bool app_mqtt_is_connected(void)
 {
     return is_connected;
 }
