@@ -2,6 +2,7 @@
 #define WIFI_MANAGER_H
 
 #include "esp_err.h"
+#include <stdbool.h>
 #include <stdint.h>
 
 typedef struct {
@@ -10,7 +11,7 @@ typedef struct {
     uint8_t channel;
     bool sta_connected;
     int8_t rssi;
-} wifi_config_t;
+} wifi_manager_config_t;
 
 esp_err_t wifi_manager_init(void);
 esp_err_t wifi_manager_connect_sta(const char *ssid, const char *password);

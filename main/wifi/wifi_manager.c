@@ -6,7 +6,7 @@
 #include "softap.h"
 
 static const char *TAG = "wifi_manager";
-static wifi_config_t current_config = {0};
+static wifi_manager_config_t current_config = {0};
 
 esp_err_t wifi_manager_init(void)
 {
