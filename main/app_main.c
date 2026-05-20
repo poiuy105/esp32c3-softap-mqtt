@@ -31,8 +31,12 @@ static void app_init_state_machine(void)
 {
     app_config.is_configured = nvs_is_config_valid(&app_config);
     state_machine_init();
-    ESP_LOGI(TAG, "State machine initialized, current state: %s",
-             state_machine_get_state_name(state_machine_get_current_state()));
+    ESP_LOGI(TAG, "State machine initialized, current state: %s, configured: %d, first_boot: %d",
+             state_machine_get_state_name(state_machine_get_current_state()),
+             app_config.is_configured, app_config.first_boot);
+    
+    // Trigger init complete to transition to appropriate state
+    state_machine_trigger_event(EVENT_INIT_COMPLETE);
 }
 
 static void app_task(void *arg)
