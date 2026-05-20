@@ -45,6 +45,10 @@ static void handle_state_init(app_event_t event)
         case EVENT_INIT_COMPLETE:
             state_machine_transition(STATE_SOFTAP);
             break;
+        case EVENT_CONFIG_RECEIVED:
+            // Already configured, skip SOFTAP and go directly to CONFIG
+            state_machine_transition(STATE_CONFIG);
+            break;
         default:
             ESP_LOGW(TAG, "Unsupported event %s in INIT state", 
                      state_machine_get_event_name(event));
