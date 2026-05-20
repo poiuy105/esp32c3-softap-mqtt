@@ -8,12 +8,30 @@ static const char *TAG = "nvs_config";
 
 esp_err_t nvs_init_config(void)
 {
+    ESP_LOGI(TAG, "Initializing NVS flash...");
+    
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_LOGW(TAG, "NVS partition was truncated and needs to be erased");
+        ESP_LOGW(TAG, "NVS init failed (0x%x), erasing partition and retrying...", err);
         ESP_ERROR_CHECK(nvs_flash_erase());
         err = nvs_flash_init();
     }
+    
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "NVS flash init failed: 0x%x (%s)", err, esp_err_to_name(err));
+    } else {
+        ESP_LOGI(TAG, "NVS flash initialized successfully");
+        
+        // Log NVS statistics for debugging
+        nvs_stats_t nvs_stats;
+        err = nvs_get_stats(NULL, &nvs_stats);
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "NVS: used_entries=%d, free_entries=%d, total_entries=%d",
+                     nvs_stats.used_entries, nvs_stats.free_entries, 
+                     nvs_stats.used_entries + nvs_stats.free_entries);
+        }
+    }
+    
     return err;
 }
 
@@ -201,6 +219,7 @@ esp_err_t nvs_load_all_config(app_config_t *config)
     esp_err_t err = nvs_read_wifi_config(config->wifi_ssid, sizeof(config->wifi_ssid), 
                                          config->wifi_password, sizeof(config->wifi_password));
     if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to read WiFi config (0x%x), using defaults", err);
         strncpy(config->wifi_ssid, DEFAULT_WIFI_SSID, sizeof(config->wifi_ssid) - 1);
         strncpy(config->wifi_password, DEFAULT_WIFI_PASSWORD, sizeof(config->wifi_password) - 1);
     }
@@ -210,12 +229,17 @@ esp_err_t nvs_load_all_config(app_config_t *config)
                               config->mqtt_username, sizeof(config->mqtt_username), 
                               config->mqtt_password, sizeof(config->mqtt_password));
     if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to read MQTT config (0x%x), using defaults", err);
         strncpy(config->mqtt_uri, DEFAULT_MQTT_URI, sizeof(config->mqtt_uri) - 1);
         config->mqtt_port = DEFAULT_MQTT_PORT;
     }
     
     config->first_boot = nvs_get_first_boot();
     config->is_configured = nvs_is_config_valid(config);
+    
+    ESP_LOGI(TAG, "Config loaded: SSID=%s, MQTT=%s:%d, first_boot=%d, configured=%d",
+             config->wifi_ssid, config->mqtt_uri, config->mqtt_port,
+             config->first_boot, config->is_configured);
     
     return ESP_OK;
 }
