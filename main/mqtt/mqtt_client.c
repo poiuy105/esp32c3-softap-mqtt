@@ -9,6 +9,37 @@ static const char *TAG = "mqtt_client";
 static esp_mqtt_client_handle_t mqtt_client = NULL;
 static bool is_connected = false;
 
+// Buffer for formatted URI
+static char formatted_uri[256];
+
+// Helper function to format MQTT URI
+static const char* format_mqtt_uri(const char *uri, uint16_t port)
+{
+    // Check if URI already has a scheme prefix
+    if (strncmp(uri, "mqtt://", 7) == 0 || 
+        strncmp(uri, "mqtts://", 8) == 0 ||
+        strncmp(uri, "ws://", 5) == 0 ||
+        strncmp(uri, "wss://", 6) == 0) {
+        // URI already has scheme, use as-is
+        return uri;
+    }
+    
+    // Check if URI contains "://" anywhere (custom scheme)
+    if (strstr(uri, "://") != NULL) {
+        return uri;
+    }
+    
+    // Format as mqtt://host or mqtt://host:port
+    if (port != 0 && port != 1883) {
+        snprintf(formatted_uri, sizeof(formatted_uri), "mqtt://%s:%d", uri, port);
+    } else {
+        snprintf(formatted_uri, sizeof(formatted_uri), "mqtt://%s", uri);
+    }
+    
+    ESP_LOGI(TAG, "Formatted MQTT URI: %s", formatted_uri);
+    return formatted_uri;
+}
+
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
     esp_mqtt_event_handle_t event = (esp_mqtt_event_handle_t)event_data;
@@ -48,11 +79,15 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 esp_err_t app_mqtt_connect(const char *broker_uri, uint16_t port, 
                                 const char *username, const char *password)
 {
-    ESP_LOGI(TAG, "Connecting to MQTT broker: %s", broker_uri);
+    ESP_LOGI(TAG, "Connecting to MQTT broker: %s (port: %d)", broker_uri, port);
+    
+    // Format URI if needed
+    const char *formatted_broker_uri = format_mqtt_uri(broker_uri, port);
+    ESP_LOGI(TAG, "Using MQTT URI: %s", formatted_broker_uri);
     
     // ESP-IDF v4.4 MQTT config structure
     esp_mqtt_client_config_t mqtt_cfg = {
-        .uri = broker_uri,
+        .uri = formatted_broker_uri,
         .username = username,
         .password = password,
     };
