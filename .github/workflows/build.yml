@@ -16,36 +16,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Setup ESP-IDF
+        uses: espressif/esp-idf-action@v1
         with:
-          python-version: '3.11'
+          version: stable
+          target: esp32c3
 
-      - name: Install ESP-IDF dependencies
+      - name: Install Python packages
         run: |
-          sudo apt-get update
-          sudo apt-get install -y git wget flex bison gperf python3 python3-pip python3-venv \
-            cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0 \
-            python3-setuptools
-
-      - name: Download ESP-IDF
-        run: |
-          mkdir -p ~/esp
-          cd ~/esp
-          wget -q https://dl.espressif.com/dl/esp-idf/esp-idf-v5.2.2.zip
-          unzip -q esp-idf-v5.2.2.zip
-          rm esp-idf-v5.2.2.zip
-          mv esp-idf-v5.2.2 esp-idf
-
-      - name: Install ESP-IDF tools
-        run: |
-          export IDF_PATH=~/esp/esp-idf
-          export PATH="$IDF_PATH/tools:$PATH"
-          $IDF_PATH/install.sh esp32c3
+          pip install idf-component-manager
 
       - name: Configure and Build Project
         run: |
-          source ~/esp/esp-idf/export.sh
+          . ./export.sh
           idf.py set-target esp32c3
           idf.py build
 
@@ -55,7 +38,7 @@ jobs:
           
       - name: Create Merged Binary
         run: |
-          source ~/esp/esp-idf/export.sh
+          . ./export.sh
           if [ -f "build/bootloader/bootloader.bin" ] && [ -f "build/partition_table/partition-table.bin" ] && [ -f "build/softap_mqtt.bin" ]; then
             echo "Merging firmware files..."
             python -m esptool --chip esp32c3 merge_bin -o build/merged.bin \
