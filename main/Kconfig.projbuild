@@ -1,0 +1,35 @@
+menu "SoftAP MQTT Configuration"
+
+    config ESP_WIFI_SOFTAP_SSID
+        string "SoftAP SSID"
+        default "ESP32-SoftAP"
+        help
+            SSID for the SoftAP network
+
+    config ESP_WIFI_SOFTAP_PASSWORD
+        string "SoftAP Password"
+        default "12345678"
+        help
+            Password for the SoftAP network (minimum 8 characters)
+
+    config ESP_WIFI_SOFTAP_CHANNEL
+        int "SoftAP Channel"
+        range 1 14
+        default 1
+        help
+            WiFi channel for SoftAP
+
+    config ESP_MQTT_BROKER_URI
+        string "MQTT Broker URI"
+        default "mqtt://test.mosquitto.org"
+        help
+            MQTT broker URI
+
+    config ESP_MQTT_PORT
+        int "MQTT Port"
+        range 1 65535
+        default 1883
+        help
+            MQTT broker port
+
+endmenu

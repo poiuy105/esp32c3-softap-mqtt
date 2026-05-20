@@ -1,0 +1,20 @@
+====================================================================
+ 复制以下所有命令，直接粘贴到 Git Bash 中运行！
+====================================================================
+
+cd e:/Espidf/softap_mqtt
+
+git init
+git add .
+git commit -m "Initial commit: ESP32-C3 SoftAP MQTT Config System with GitHub Actions"
+git branch -M main
+git remote add origin https://github.com/poiuy105/esp32c3-softap-mqtt.git
+git push -u origin main
+
+====================================================================
+ 推送成功后！
+====================================================================
+
+ 1. 访问: https://github.com/poiuy105/esp32c3-softap-mqtt
+ 2. 点击顶部的 Actions 标签
+ 3. 等 3-5 分钟，直到

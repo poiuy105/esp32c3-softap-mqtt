@@ -1,0 +1,25 @@
+idf_component_register(
+    SRCS 
+        "app_main.c"
+        "core/state_machine.c"
+        "core/event_handlers.c"
+        "wifi/wifi_manager.c"
+        "wifi/softap.c"
+        "mqtt/mqtt_client.c"
+        "config/nvs_config.c"
+        "web/http_server.c"
+        "web/api_handlers.c"
+    INCLUDE_DIRS 
+        "." 
+        "core"
+        "wifi"
+        "mqtt"
+        "config"
+        "web"
+    REQUIRES 
+        esp_wifi 
+        esp_netif 
+        nvs_flash 
+        mqtt 
+        esp_http_server
+)
