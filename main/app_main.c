@@ -73,6 +73,10 @@ static void app_task(void *arg)
                     wifi_manager_stop_softap();
                     vTaskDelay(pdMS_TO_TICKS(1000));
                     
+                    // Reload config after saving (to get updated values)
+                    nvs_load_all_config(&app_config);
+                    ESP_LOGI(TAG, "Reloaded config: SSID=%s", app_config.wifi_ssid);
+                    
                     // Create event group for WiFi connection sync
                     wifi_event_group = xEventGroupCreate();
                     event_handlers_set_wifi_event_group(wifi_event_group);
