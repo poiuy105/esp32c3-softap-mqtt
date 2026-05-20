@@ -112,8 +112,12 @@ static void app_task(void *arg)
                     break;
                     
                 case STATE_ERROR:
-                    ESP_LOGE(TAG, "System in error state, reverting to SoftAP");
-                    restart_pending = true;
+                    ESP_LOGE(TAG, "System in error state, reverting to SoftAP mode");
+                    // Stop any active connections
+                    wifi_manager_stop_softap();
+                    vTaskDelay(pdMS_TO_TICKS(500));
+                    // Trigger reset config event to go back to INIT -> SOFTAP
+                    state_machine_trigger_event(EVENT_RESET_CONFIG);
                     break;
             }
         }

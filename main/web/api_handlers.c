@@ -68,6 +68,9 @@ static esp_err_t post_config_handler(httpd_req_t *req)
                            cJSON_IsString(mqtt_username) ? mqtt_username->valuestring : "",
                            cJSON_IsString(mqtt_password) ? mqtt_password->valuestring : "");
         
+        // Mark as configured (not first boot anymore)
+        nvs_set_first_boot(false);
+        
         cJSON *response = cJSON_CreateObject();
         cJSON_AddTrueToObject(response, "success");
         char *resp_str = cJSON_Print(response);
@@ -86,6 +89,7 @@ static esp_err_t post_config_handler(httpd_req_t *req)
         free(resp_str);
         cJSON_Delete(root);
         
+        ESP_LOGI(TAG, "Config saved, triggering CONFIG_RECEIVED event");
         state_machine_trigger_event(EVENT_CONFIG_RECEIVED);
         
         return ESP_OK;
