@@ -1,24 +1,26 @@
 #include <string.h>
-#include <stdlib.h>
+#include "api_handlers.h"
 #include "esp_log.h"
-#include "esp_http_server.h"
+#include "cJSON.h"
 #include "nvs_config.h"
 #include "state_machine.h"
-#include "cJSON.h"
 
 static const char *TAG = "api_handlers";
 
 static esp_err_t get_config_handler(httpd_req_t *req)
 {
+    ESP_LOGI(TAG, "GET /api/config");
+    
     app_config_t config;
     nvs_load_all_config(&config);
     
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "wifi_ssid", config.wifi_ssid);
+    cJSON_AddStringToObject(root, "wifi_password", config.wifi_password);
     cJSON_AddStringToObject(root, "mqtt_uri", config.mqtt_uri);
     cJSON_AddNumberToObject(root, "mqtt_port", config.mqtt_port);
     cJSON_AddStringToObject(root, "mqtt_username", config.mqtt_username);
-    cJSON_AddTrueToObject(root, "is_configured");
+    cJSON_AddStringToObject(root, "mqtt_password", config.mqtt_password);
     
     char *json_str = cJSON_Print(root);
     cJSON_Delete(root);
@@ -38,6 +40,8 @@ static esp_err_t get_config_handler(httpd_req_t *req)
 
 static esp_err_t post_config_handler(httpd_req_t *req)
 {
+    ESP_LOGI(TAG, "POST /api/config");
+    
     char buf[512];
     int ret = httpd_req_recv(req, buf, sizeof(buf) - 1);
     if (ret <= 0) {
@@ -60,16 +64,53 @@ static esp_err_t post_config_handler(httpd_req_t *req)
     const cJSON *mqtt_password = cJSON_GetObjectItemCaseSensitive(root, "mqtt_password");
     
     if (cJSON_IsString(wifi_ssid) && cJSON_IsString(mqtt_uri)) {
-        nvs_save_wifi_config(wifi_ssid->valuestring, 
+        // Save WiFi config and check result
+        esp_err_t err = nvs_save_wifi_config(wifi_ssid->valuestring, 
                            cJSON_IsString(wifi_password) ? wifi_password->valuestring : "");
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to save WiFi config: %s", esp_err_to_name(err));
+            cJSON_Delete(root);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to save WiFi config");
+            return ESP_FAIL;
+        }
         
-        nvs_save_mqtt_config(mqtt_uri->valuestring,
+        // Save MQTT config and check result
+        err = nvs_save_mqtt_config(mqtt_uri->valuestring,
                            cJSON_IsNumber(mqtt_port) ? (uint16_t)mqtt_port->valueint : 1883,
                            cJSON_IsString(mqtt_username) ? mqtt_username->valuestring : "",
                            cJSON_IsString(mqtt_password) ? mqtt_password->valuestring : "");
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to save MQTT config: %s", esp_err_to_name(err));
+            cJSON_Delete(root);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to save MQTT config");
+            return ESP_FAIL;
+        }
         
         // Mark as configured (not first boot anymore)
-        nvs_set_first_boot(false);
+        err = nvs_set_first_boot(false);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to set first_boot flag: %s", esp_err_to_name(err));
+            // Continue anyway, this is not critical
+        }
+        
+        // Verify config was saved correctly by reloading
+        app_config_t verify_config;
+        err = nvs_load_all_config(&verify_config);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to verify saved config: %s", esp_err_to_name(err));
+            cJSON_Delete(root);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to verify config");
+            return ESP_FAIL;
+        }
+        
+        if (strlen(verify_config.wifi_ssid) == 0) {
+            ESP_LOGE(TAG, "WiFi SSID is empty after save!");
+            cJSON_Delete(root);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "WiFi SSID save verification failed");
+            return ESP_FAIL;
+        }
+        
+        ESP_LOGI(TAG, "Config verified: SSID=%s", verify_config.wifi_ssid);
         
         cJSON *response = cJSON_CreateObject();
         cJSON_AddTrueToObject(response, "success");
@@ -80,7 +121,6 @@ static esp_err_t post_config_handler(httpd_req_t *req)
             ESP_LOGE(TAG, "Failed to print JSON response");
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory error");
             cJSON_Delete(root);
-            state_machine_trigger_event(EVENT_CONFIG_RECEIVED);
             return ESP_FAIL;
         }
         
@@ -89,7 +129,7 @@ static esp_err_t post_config_handler(httpd_req_t *req)
         free(resp_str);
         cJSON_Delete(root);
         
-        ESP_LOGI(TAG, "Config saved, triggering CONFIG_RECEIVED event");
+        ESP_LOGI(TAG, "Config saved and verified, triggering CONFIG_RECEIVED event");
         state_machine_trigger_event(EVENT_CONFIG_RECEIVED);
         
         return ESP_OK;
@@ -148,5 +188,6 @@ esp_err_t api_handlers_register(httpd_handle_t server)
     };
     httpd_register_uri_handler(server, &status_get);
     
+    ESP_LOGI(TAG, "API handlers registered");
     return ESP_OK;
 }

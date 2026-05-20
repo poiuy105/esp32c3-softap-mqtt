@@ -27,10 +27,12 @@ esp_err_t wifi_manager_connect_sta(const char *ssid, const char *password)
     
     // Destroy existing netifs to avoid conflicts
     if (sta_netif != NULL) {
+        ESP_LOGI(TAG, "Destroying existing STA netif");
         esp_netif_destroy(sta_netif);
         sta_netif = NULL;
     }
     if (ap_netif != NULL) {
+        ESP_LOGI(TAG, "Destroying existing AP netif");
         esp_netif_destroy(ap_netif);
         ap_netif = NULL;
     }
@@ -67,6 +69,7 @@ esp_err_t wifi_manager_stop_sta(void)
     
     // Destroy STA netif
     if (sta_netif != NULL) {
+        ESP_LOGI(TAG, "Destroying STA netif");
         esp_netif_destroy(sta_netif);
         sta_netif = NULL;
     }
@@ -89,11 +92,68 @@ int8_t wifi_manager_get_rssi(void)
 esp_err_t wifi_manager_start_softap(const char *ssid, const char *password)
 {
     ESP_LOGI(TAG, "Starting WiFi SoftAP: %s", ssid);
-    return softap_start_with_netif(ssid, password, &sta_netif, &ap_netif);
+    
+    // Destroy existing netifs to avoid conflicts
+    if (sta_netif != NULL) {
+        ESP_LOGI(TAG, "Destroying existing STA netif before starting SoftAP");
+        esp_netif_destroy(sta_netif);
+        sta_netif = NULL;
+    }
+    if (ap_netif != NULL) {
+        ESP_LOGI(TAG, "Destroying existing AP netif before starting SoftAP");
+        esp_netif_destroy(ap_netif);
+        ap_netif = NULL;
+    }
+    
+    ap_netif = esp_netif_create_default_wifi_ap();
+    if (ap_netif == NULL) {
+        ESP_LOGE(TAG, "Failed to create AP netif");
+        return ESP_FAIL;
+    }
+    
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    
+    wifi_config_t wifi_cfg = {0};
+    strncpy((char *)wifi_cfg.ap.ssid, ssid, sizeof(wifi_cfg.ap.ssid) - 1);
+    wifi_cfg.ap.ssid_len = strlen(ssid);
+    wifi_cfg.ap.channel = DEFAULT_SOFTAP_CHANNEL;
+    wifi_cfg.ap.max_connection = 4;
+    wifi_cfg.ap.beacon_interval = 100;
+    
+    // Handle empty password (open network)
+    if (password == NULL || strlen(password) == 0) {
+        wifi_cfg.ap.authmode = WIFI_AUTH_OPEN;
+        ESP_LOGI(TAG, "SoftAP configured as open network (no password)");
+    } else {
+        strncpy((char *)wifi_cfg.ap.password, password, sizeof(wifi_cfg.ap.password) - 1);
+        wifi_cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
+    }
+    
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_cfg));
+    ESP_ERROR_CHECK(esp_wifi_start());
+    
+    ESP_LOGI(TAG, "SoftAP started successfully");
+    ESP_LOGI(TAG, "SoftAP IP: 192.168.4.1");
+    
+    return ESP_OK;
 }
 
 esp_err_t wifi_manager_stop_softap(void)
 {
     ESP_LOGI(TAG, "Stopping WiFi SoftAP");
-    return softap_stop_with_netif(&sta_netif, &ap_netif);
+    
+    esp_wifi_stop();
+    esp_wifi_deinit();
+    
+    // Destroy AP netif
+    if (ap_netif != NULL) {
+        ESP_LOGI(TAG, "Destroying AP netif");
+        esp_netif_destroy(ap_netif);
+        ap_netif = NULL;
+    }
+    
+    ESP_LOGI(TAG, "SoftAP stopped");
+    return ESP_OK;
 }
