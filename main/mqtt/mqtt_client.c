@@ -50,12 +50,18 @@ esp_err_t app_mqtt_connect(const char *broker_uri, uint16_t port,
 {
     ESP_LOGI(TAG, "Connecting to MQTT broker: %s", broker_uri);
     
-    // ESP-IDF v5.0 MQTT config - use nested credentials structure
+    // ESP-IDF v5.1 MQTT config structure
     esp_mqtt_client_config_t mqtt_cfg = {
-        .host.uri = broker_uri,
-        .credentials.username = username,
-        .credentials.password = password,
+        .broker.address.uri = broker_uri,
     };
+    
+    if (username != NULL && strlen(username) > 0) {
+        mqtt_cfg.credentials.username = username;
+    }
+    
+    if (password != NULL && strlen(password) > 0) {
+        mqtt_cfg.credentials.authentication.password = password;
+    }
     
     mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
     if (mqtt_client == NULL) {
