@@ -16,17 +16,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Clone ESP-IDF v5.0.15 (Stable)
-        run: |
-          # Remove existing esp-idf if any (from submodule)
-          rm -rf esp-idf
-          # Clone stable ESP-IDF version v5.0.15
-          git clone --recursive --depth 1 --branch v5.0.15 https://github.com/espressif/esp-idf.git esp-idf
-
-      - name: Install ESP-IDF
-        run: |
-          cd esp-idf
-          ./install.sh esp32c3
+      - name: Setup ESP-IDF v5.0 (Stable)
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.0
+          target: esp32c3
 
       - name: Prepare SDK Config
         run: |
@@ -123,6 +117,6 @@ jobs:
             echo "| ELF File | ✅ Available |" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**ESP-IDF Version**: v5.0.15 (Stable)" >> $GITHUB_STEP_SUMMARY
+          echo "**ESP-IDF Version**: v5.0 (Stable)" >> $GITHUB_STEP_SUMMARY
           echo "**Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Branch**: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
