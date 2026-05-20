@@ -1,4 +1,5 @@
 #include <string.h>
+#include <inttypes.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
@@ -122,7 +123,7 @@ static void app_task(void *arg)
 void app_main(void)
 {
     ESP_LOGI(TAG, "ESP32 SoftAP MQTT Config");
-    ESP_LOGI(TAG, "Free heap: %u bytes", esp_get_free_heap_size());
+    ESP_LOGI(TAG, "Free heap: %" PRIu32 " bytes", esp_get_free_heap_size());
     
     esp_err_t ret = nvs_init_config();
     if (ret != ESP_OK) {
