@@ -8,7 +8,6 @@ static const char *TAG = "mqtt_client";
 
 static esp_mqtt_client_handle_t mqtt_client = NULL;
 static bool is_connected = false;
-static uint32_t reconnect_attempts = 0;
 
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
@@ -18,7 +17,6 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT connected");
             is_connected = true;
-            reconnect_attempts = 0;
             break;
             
         case MQTT_EVENT_DISCONNECTED:
@@ -63,15 +61,14 @@ esp_err_t app_mqtt_connect(const char *broker_uri, uint16_t port,
     ESP_LOGI(TAG, "Connecting to MQTT broker: %s", full_uri);
     
     // ESP-IDF v5.1 MQTT config structure
-    esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = full_uri,
-    };
+    esp_mqtt_client_config_t mqtt_cfg = {0};
+    mqtt_cfg.broker.address.uri = full_uri;
     
-    if (username != NULL) {
+    if (username != NULL && strlen(username) > 0) {
         mqtt_cfg.credentials.username = username;
     }
     
-    if (password != NULL) {
+    if (password != NULL && strlen(password) > 0) {
         mqtt_cfg.credentials.authentication.password = password;
     }
     
