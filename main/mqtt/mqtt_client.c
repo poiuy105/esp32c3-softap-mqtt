@@ -2,6 +2,7 @@
 #include "app_mqtt.h"
 #include "esp_log.h"
 #include "esp_event.h"
+#include "mqtt_client.h"
 
 static const char *TAG = "mqtt_client";
 
