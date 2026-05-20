@@ -17,10 +17,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup ESP-IDF
-        uses: espressif/esp-idf-action@v1
+        uses: espressif/setup-esp-idf@v4
         with:
-          version: stable
-          target: esp32c3
+          version: v5.2.2
+          espfs: 'true'
 
       - name: Install Python packages
         run: |
@@ -28,7 +28,7 @@ jobs:
 
       - name: Configure and Build Project
         run: |
-          . ./export.sh
+          . $IDF_PATH/export.sh
           idf.py set-target esp32c3
           idf.py build
 
@@ -38,7 +38,7 @@ jobs:
           
       - name: Create Merged Binary
         run: |
-          . ./export.sh
+          . $IDF_PATH/export.sh
           if [ -f "build/bootloader/bootloader.bin" ] && [ -f "build/partition_table/partition-table.bin" ] && [ -f "build/softap_mqtt.bin" ]; then
             echo "Merging firmware files..."
             python -m esptool --chip esp32c3 merge_bin -o build/merged.bin \
