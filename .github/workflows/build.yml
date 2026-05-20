@@ -16,40 +16,33 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Debug environment
-        run: |
-          echo "=== System Info ==="
-          uname -a
-          echo "=== Git Version ==="
-          git --version
-          echo "=== Current Directory ==="
-          pwd
-          ls -la
-          echo "=== Git Config ==="
-          git config --list || true
-
       - name: Setup ESP-IDF
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v5.2.2
           target: esp32c3
-        continue-on-error: true
+
+      - name: Prepare SDK Config
+        run: |
+          if [ ! -f "sdkconfig" ] && [ -f "sdkconfig.defaults" ]; then
+            cp sdkconfig.defaults sdkconfig
+          fi
+          ls -la
 
       - name: Configure and Build Project
         run: |
-          echo "=== Building Project ==="
-          source ./export.sh 2>/dev/null || source $IDF_PATH/export.sh 2>/dev/null || true
-          idf.py set-target esp32c3 || echo "Set target failed, continuing..."
+          source ./export.sh
+          idf.py set-target esp32c3
           idf.py build
 
-          ls -la build/ 2>/dev/null || echo "Build directory not found"
+          ls -la build/
           ls -la build/bootloader/ 2>/dev/null || true
           ls -la build/partition_table/ 2>/dev/null || true
           
       - name: Create Merged Binary
         if: success()
         run: |
-          source ./export.sh 2>/dev/null || source $IDF_PATH/export.sh 2>/dev/null || true
+          source ./export.sh
           if [ -f "build/bootloader/bootloader.bin" ] && [ -f "build/partition_table/partition-table.bin" ] && [ -f "build/softap_mqtt.bin" ]; then
             echo "Merging firmware files..."
             python -m esptool --chip esp32c3 merge_bin -o build/merged.bin \
