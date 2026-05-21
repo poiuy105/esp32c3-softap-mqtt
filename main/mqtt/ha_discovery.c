@@ -13,6 +13,8 @@ static const char *TAG = "ha_discovery";
 static char node_id[32] = {0};
 // MAC address string (e.g., "AA:BB:CC:DD:EE:FF")
 static char mac_str[18] = {0};
+// Device name with MAC suffix (e.g., "ESP32-C3 AA:BB:CC")
+static char device_name[32] = {0};
 
 // Topic buffers
 static char avail_topic[64] = {0};
@@ -29,16 +31,18 @@ static void init_node_id(void)
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     snprintf(node_id, sizeof(node_id), "esp32c3_%02x%02x%02x%02x",
              mac[2], mac[3], mac[4], mac[5]);
+    snprintf(device_name, sizeof(device_name), "ESP32-C3 %02X:%02X:%02X",
+             mac[3], mac[4], mac[5]);
     snprintf(avail_topic, sizeof(avail_topic), "%s/status", node_id);
 
-    ESP_LOGI(TAG, "Node ID: %s, MAC: %s", node_id, mac_str);
+    ESP_LOGI(TAG, "Node ID: %s, Device: %s", node_id, device_name);
 }
 
 // Build the common device info JSON object
 static cJSON* build_device_info(void)
 {
     cJSON *device = cJSON_CreateObject();
-    cJSON_AddStringToObject(device, "name", "ESP32-C3 SoftAP");
+    cJSON_AddStringToObject(device, "name", device_name);
     cJSON_AddStringToObject(device, "manufacturer", "Espressif");
     cJSON_AddStringToObject(device, "model", "ESP32-C3");
     cJSON_AddStringToObject(device, "identifiers", node_id);
@@ -54,7 +58,8 @@ static cJSON* build_device_info(void)
 }
 
 // Publish a sensor discovery config
-static esp_err_t publish_sensor_config(const char *object_id, const char *device_class,
+static esp_err_t publish_sensor_config(const char *object_id, const char *name,
+                                        const char *device_class,
                                         const char *unit, const char *state_class)
 {
     char topic[128];
@@ -67,7 +72,7 @@ static esp_err_t publish_sensor_config(const char *object_id, const char *device
     snprintf(unique_id, sizeof(unique_id), "%s_%s", node_id, object_id);
 
     cJSON *root = cJSON_CreateObject();
-    cJSON_AddNullToObject(root, "name");  // Use device name
+    cJSON_AddStringToObject(root, "name", name);
     cJSON_AddStringToObject(root, "state_topic", state_topic);
     cJSON_AddStringToObject(root, "unique_id", unique_id);
     cJSON_AddStringToObject(root, "availability_topic", avail_topic);
@@ -100,7 +105,8 @@ static esp_err_t publish_sensor_config(const char *object_id, const char *device
 }
 
 // Publish a binary_sensor discovery config
-static esp_err_t publish_binary_sensor_config(const char *object_id, const char *device_class)
+static esp_err_t publish_binary_sensor_config(const char *object_id, const char *name,
+                                               const char *device_class)
 {
     char topic[128];
     snprintf(topic, sizeof(topic), "homeassistant/binary_sensor/%s/%s/config", node_id, object_id);
@@ -112,7 +118,7 @@ static esp_err_t publish_binary_sensor_config(const char *object_id, const char 
     snprintf(unique_id, sizeof(unique_id), "%s_%s", node_id, object_id);
 
     cJSON *root = cJSON_CreateObject();
-    cJSON_AddNullToObject(root, "name");
+    cJSON_AddStringToObject(root, "name", name);
     cJSON_AddStringToObject(root, "state_topic", state_topic);
     cJSON_AddStringToObject(root, "unique_id", unique_id);
     cJSON_AddStringToObject(root, "availability_topic", avail_topic);
@@ -149,25 +155,25 @@ static esp_err_t publish_state(const char *object_id, const char *value)
 esp_err_t ha_discovery_publish_configs(void)
 {
     init_node_id();
-    ESP_LOGI(TAG, "Publishing HA discovery configs...");
+    ESP_LOGI(TAG, "Publishing HA discovery configs for device: %s", device_name);
 
     // WiFi SSID sensor
-    publish_sensor_config("wifi_ssid", NULL, NULL, NULL);
+    publish_sensor_config("wifi_ssid", "WiFi 名称", NULL, NULL, NULL);
 
     // WiFi RSSI sensor
-    publish_sensor_config("wifi_rssi", "signal_strength", "dBm", "measurement");
+    publish_sensor_config("wifi_rssi", "WiFi 信号强度", "signal_strength", "dBm", "measurement");
 
     // WiFi IP sensor
-    publish_sensor_config("wifi_ip", NULL, NULL, NULL);
+    publish_sensor_config("wifi_ip", "IP 地址", NULL, NULL, NULL);
 
     // Heap free sensor
-    publish_sensor_config("heap_free", NULL, "B", "measurement");
+    publish_sensor_config("heap_free", "空闲内存", NULL, "B", "measurement");
 
     // Uptime sensor
-    publish_sensor_config("uptime", "duration", "s", "total_increasing");
+    publish_sensor_config("uptime", "运行时间", "duration", "s", "total_increasing");
 
     // MQTT status binary sensor
-    publish_binary_sensor_config("mqtt_status", "connectivity");
+    publish_binary_sensor_config("mqtt_status", "MQTT 状态", "connectivity");
 
     ESP_LOGI(TAG, "HA discovery configs published");
     return ESP_OK;
