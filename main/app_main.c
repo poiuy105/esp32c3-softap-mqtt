@@ -13,6 +13,7 @@
 #include "state_machine.h"
 #include "wifi_manager.h"
 #include "app_mqtt.h"
+#include "ha_discovery.h"
 #include "http_server.h"
 #include "softap.h"
 #include "event_handlers.h"
@@ -138,10 +139,24 @@ static void app_task(void *arg)
                                       app_config.mqtt_username, app_config.mqtt_password);
                     break;
                     
-                case STATE_RUNNING:
+                case STATE_RUNNING: {
                     ESP_LOGI(TAG, "System running!");
-                    app_mqtt_subscribe("esp32/command", 0);
+                    // Publish initial states
+                    ha_discovery_publish_states();
+                    
+                    // Periodic state reporting (every 30 seconds)
+                    int report_count = 0;
+                    while (state_machine_get_current_state() == STATE_RUNNING) {
+                        vTaskDelay(pdMS_TO_TICKS(1000));
+                        report_count++;
+                        if (report_count >= 30) {
+                            report_count = 0;
+                            ha_discovery_publish_states();
+                            ESP_LOGI(TAG, "Periodic state published");
+                        }
+                    }
                     break;
+                }
                     
                 case STATE_ERROR:
                     ESP_LOGE(TAG, "System in error state, reverting to SoftAP mode");

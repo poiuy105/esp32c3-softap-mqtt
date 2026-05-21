@@ -13,6 +13,5 @@ void event_handlers_set_wifi_event_group(EventGroupHandle_t event_group);
 
 esp_err_t event_handlers_init(void);
 void event_handlers_register_wifi_handler(void);
-void event_handlers_register_mqtt_handler(void);
 
 #endif

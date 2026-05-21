@@ -70,8 +70,3 @@ void event_handlers_register_wifi_handler(void)
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, &ip_event_handler_instance));
     ESP_LOGI(TAG, "WiFi event handlers registered");
 }
-
-void event_handlers_register_mqtt_handler(void)
-{
-    ESP_LOGI(TAG, "MQTT event handlers registered");
-}

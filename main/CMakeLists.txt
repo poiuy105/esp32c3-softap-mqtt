@@ -6,6 +6,7 @@ idf_component_register(
         "wifi/wifi_manager.c"
         "wifi/softap.c"
         "mqtt/mqtt_client.c"
+        "mqtt/ha_discovery.c"
         "config/nvs_config.c"
         "web/http_server.c"
         "web/api_handlers.c"
