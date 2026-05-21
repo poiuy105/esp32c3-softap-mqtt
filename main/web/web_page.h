@@ -45,7 +45,7 @@ static const char INDEX_HTML[] =
 "<button type='button' id='scanBtn' onclick='scanWiFi()' style='padding:12px 16px;background:#28a745;color:white;border:none;border-radius:5px;font-size:14px;cursor:pointer;white-space:nowrap;'>扫描</button>"
 "</div>"
 "</div>"
-"<div class='form-group'>
+"<div class='form-group'>"
 "<label>WiFi 密码:</label>"
 "<div style='display:flex;gap:8px;'>"
 "<input type='password' id='wifi_password' style='flex:1;'>"
@@ -64,7 +64,7 @@ static const char INDEX_HTML[] =
 "<label>MQTT 用户名:</label>"
 "<input type='text' id='mqtt_username'>"
 "</div>"
-"<div class='form-group'>
+"<div class='form-group'>"
 "<label>MQTT 密码:</label>"
 "<div style='display:flex;gap:8px;'>"
 "<input type='password' id='mqtt_password' style='flex:1;'>"
