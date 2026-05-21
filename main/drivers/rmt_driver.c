@@ -4,24 +4,22 @@
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
-#include <math.h>
 
-static const char *TAG = "RMT_DRV";
+static const char *TAG = "PWM";
 
 // Mutex for thread-safe access
-static SemaphoreHandle_t rmt_mutex = NULL;
+static SemaphoreHandle_t pwm_mutex = NULL;
 
 // Helper macros for mutex lock/unlock
-#define RMT_LOCK()   do { if (rmt_mutex) xSemaphoreTake(rmt_mutex, portMAX_DELAY); } while(0)
-#define RMT_UNLOCK() do { if (rmt_mutex) xSemaphoreGive(rmt_mutex); } while(0)
+#define PWM_LOCK()   do { if (pwm_mutex) xSemaphoreTake(pwm_mutex, portMAX_DELAY); } while(0)
+#define PWM_UNLOCK() do { if (pwm_mutex) xSemaphoreGive(pwm_mutex); } while(0)
 
 // RMT channel handles
 static rmt_channel_handle_t light_chan = NULL;
 static rmt_channel_handle_t sound_chan = NULL;
 
-// Encoder handles
-static rmt_encoder_handle_t light_encoder = NULL;
-static rmt_encoder_handle_t sound_encoder = NULL;
+// Copy encoder for simple symbol transmission
+static rmt_encoder_handle_t copy_encoder = NULL;
 
 // Current state
 static struct {
@@ -33,36 +31,16 @@ static struct {
     uint8_t sound_duty;
 } state = {0};
 
-// Simple bytes encoder for PWM simulation
-static rmt_encoder_handle_t create_bytes_encoder(void)
-{
-    rmt_bytes_encoder_config_t enc_cfg = {
-        .bit0 = {
-            .level0 = 1,
-            .duration0 = 1,
-            .level1 = 0,
-            .duration1 = 1,
-        },
-        .bit1 = {
-            .level0 = 1,
-            .duration0 = 2,
-            .level1 = 0,
-            .duration1 = 1,
-        },
-        .flags.msb_first = 1,
-    };
-    rmt_encoder_handle_t encoder = NULL;
-    rmt_new_bytes_encoder(&enc_cfg, &encoder);
-    return encoder;
-}
+// PWM symbol buffer (2 symbols for one PWM period)
+static rmt_symbol_word_t pwm_symbols[2];
 
 esp_err_t rmt_driver_init(void)
 {
-    ESP_LOGI(TAG, "Initializing RMT driver");
+    ESP_LOGI(TAG, "Initializing PWM driver (RMT)");
     
-    // Create mutex for thread-safe access
-    if (rmt_mutex == NULL) {
-        rmt_mutex = xSemaphoreCreateMutex();
+    // Create mutex
+    if (pwm_mutex == NULL) {
+        pwm_mutex = xSemaphoreCreateMutex();
     }
     
     esp_err_t ret;
@@ -71,7 +49,7 @@ esp_err_t rmt_driver_init(void)
     rmt_tx_channel_config_t light_cfg = {
         .gpio_num = GPIO_LIGHT_PWM,
         .clk_src = RMT_CLK_SRC_DEFAULT,
-        .resolution_hz = 1000000,  // 1MHz resolution
+        .resolution_hz = 1000000,  // 1MHz = 1us resolution
         .mem_block_symbols = 64,
         .trans_queue_depth = 4,
         .flags.invert_out = false,
@@ -87,7 +65,7 @@ esp_err_t rmt_driver_init(void)
     rmt_tx_channel_config_t sound_cfg = {
         .gpio_num = GPIO_SOUND_PWM,
         .clk_src = RMT_CLK_SRC_DEFAULT,
-        .resolution_hz = 1000000,  // 1MHz resolution
+        .resolution_hz = 1000000,  // 1MHz = 1us resolution
         .mem_block_symbols = 64,
         .trans_queue_depth = 4,
         .flags.invert_out = false,
@@ -99,9 +77,13 @@ esp_err_t rmt_driver_init(void)
         return ret;
     }
     
-    // Create encoders
-    light_encoder = create_bytes_encoder();
-    sound_encoder = create_bytes_encoder();
+    // Create copy encoder for symbol transmission
+    rmt_copy_encoder_config_t enc_cfg = {};
+    ret = rmt_new_copy_encoder(&enc_cfg, &copy_encoder);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to create encoder: %s", esp_err_to_name(ret));
+        return ret;
+    }
     
     // Enable channels
     rmt_enable(light_chan);
@@ -116,43 +98,42 @@ esp_err_t rmt_driver_init(void)
         .intr_type = GPIO_INTR_DISABLE,
     };
     gpio_config(&io_conf);
-    gpio_set_level(GPIO_SOUND_EN, 0);  // Default low
+    gpio_set_level(GPIO_SOUND_EN, 0);
     
-    ESP_LOGI(TAG, "RMT driver initialized");
+    ESP_LOGI(TAG, "PWM driver initialized");
     return ESP_OK;
 }
 
-static esp_err_t set_pwm_output(rmt_channel_handle_t chan, rmt_encoder_handle_t encoder,
-                                 uint32_t freq_hz, uint8_t duty_percent)
+// Generate and transmit PWM signal
+static esp_err_t transmit_pwm(rmt_channel_handle_t chan, uint32_t freq_hz, uint8_t duty_percent)
 {
     if (freq_hz == 0 || duty_percent == 0) {
-        // Stop output by sending empty transaction
+        // Stop output
         rmt_disable(chan);
         rmt_enable(chan);
         return ESP_OK;
     }
     
-    // Calculate RMT timing for PWM
-    // RMT resolution: 1MHz = 1us per tick
-    // Period = 1/freq seconds = 1000000/freq us
+    // Calculate timing: resolution = 1MHz = 1us per tick
+    // Period = 1/freq seconds = 1000000/freq microseconds
     uint32_t period_us = 1000000 / freq_hz;
     uint32_t high_us = (period_us * duty_percent) / 100;
     uint32_t low_us = period_us - high_us;
     
-    // Create simple on/off pattern
-    rmt_symbol_word_t symbols[2] = {
-        {
-            .level0 = 1,
-            .duration0 = high_us,
-            .level1 = 0,
-            .duration1 = low_us,
-        },
-        {
-            .level0 = 0,
-            .duration0 = 0,
-            .level1 = 0,
-            .duration1 = 0,
-        },
+    // Build PWM symbol: high phase + low phase
+    // RMT symbol format: [level0, duration0, level1, duration1]
+    pwm_symbols[0] = (rmt_symbol_word_t) {
+        .level0 = 1,
+        .duration0 = high_us,
+        .level1 = 0,
+        .duration1 = low_us,
+    };
+    // End marker (will loop back to symbol[0])
+    pwm_symbols[1] = (rmt_symbol_word_t) {
+        .level0 = 0,
+        .duration0 = 0,
+        .level1 = 0,
+        .duration1 = 0,
     };
     
     rmt_transmit_config_t tx_cfg = {
@@ -160,46 +141,45 @@ static esp_err_t set_pwm_output(rmt_channel_handle_t chan, rmt_encoder_handle_t 
         .flags.eot_level = 0,
     };
     
-    return rmt_transmit(chan, encoder, symbols, sizeof(symbols), &tx_cfg);
+    return rmt_transmit(chan, copy_encoder, pwm_symbols, sizeof(pwm_symbols), &tx_cfg);
 }
 
 esp_err_t rmt_set_light(bool enable, uint32_t freq_hz, uint8_t duty_percent)
 {
-    ESP_LOGI(TAG, "Set light: enable=%d, freq=%lu, duty=%d", enable, freq_hz, duty_percent);
+    ESP_LOGI(TAG, "Light: en=%d, freq=%luHz, duty=%d%%", enable, freq_hz, duty_percent);
     
     // Clamp values
     if (freq_hz > FREQ_MAX) freq_hz = FREQ_MAX;
     if (duty_percent > DUTY_LIGHT_MAX) duty_percent = DUTY_LIGHT_MAX;
     
-    RMT_LOCK();
+    PWM_LOCK();
     state.light_enabled = enable;
     state.light_freq = freq_hz;
     state.light_duty = duty_percent;
     
     esp_err_t ret;
     if (enable && freq_hz > 0 && duty_percent > 0) {
-        ret = set_pwm_output(light_chan, light_encoder, freq_hz, duty_percent);
+        ret = transmit_pwm(light_chan, freq_hz, duty_percent);
     } else {
-        // Stop output
         rmt_disable(light_chan);
         rmt_enable(light_chan);
         ret = ESP_OK;
     }
-    RMT_UNLOCK();
+    PWM_UNLOCK();
     
     return ret;
 }
 
 esp_err_t rmt_set_sound(bool enable, uint32_t freq_hz, uint8_t duty_percent)
 {
-    ESP_LOGI(TAG, "Set sound: enable=%d, freq=%lu, duty=%d", enable, freq_hz, duty_percent);
+    ESP_LOGI(TAG, "Sound: en=%d, freq=%luHz, duty=%d%%", enable, freq_hz, duty_percent);
     
     // Clamp values
     if (freq_hz > FREQ_MAX) freq_hz = FREQ_MAX;
     if (duty_percent < DUTY_SOUND_MIN) duty_percent = DUTY_SOUND_MIN;
     if (duty_percent > DUTY_SOUND_MAX) duty_percent = DUTY_SOUND_MAX;
     
-    RMT_LOCK();
+    PWM_LOCK();
     state.sound_enabled = enable;
     state.sound_freq = freq_hz;
     state.sound_duty = duty_percent;
@@ -209,52 +189,56 @@ esp_err_t rmt_set_sound(bool enable, uint32_t freq_hz, uint8_t duty_percent)
     
     esp_err_t ret;
     if (enable && freq_hz > 0) {
-        ret = set_pwm_output(sound_chan, sound_encoder, freq_hz, duty_percent);
+        ret = transmit_pwm(sound_chan, freq_hz, duty_percent);
     } else {
-        // Stop output
         rmt_disable(sound_chan);
         rmt_enable(sound_chan);
         ret = ESP_OK;
     }
-    RMT_UNLOCK();
+    PWM_UNLOCK();
     
     return ret;
 }
 
 // Getters - thread-safe
 bool rmt_get_light_enabled(void) { 
-    RMT_LOCK();
+    PWM_LOCK();
     bool val = state.light_enabled;
-    RMT_UNLOCK();
+    PWM_UNLOCK();
     return val;
 }
+
 uint32_t rmt_get_light_freq(void) { 
-    RMT_LOCK();
+    PWM_LOCK();
     uint32_t val = state.light_freq;
-    RMT_UNLOCK();
+    PWM_UNLOCK();
     return val;
 }
+
 uint8_t rmt_get_light_duty(void) { 
-    RMT_LOCK();
+    PWM_LOCK();
     uint8_t val = state.light_duty;
-    RMT_UNLOCK();
+    PWM_UNLOCK();
     return val;
 }
+
 bool rmt_get_sound_enabled(void) { 
-    RMT_LOCK();
+    PWM_LOCK();
     bool val = state.sound_enabled;
-    RMT_UNLOCK();
+    PWM_UNLOCK();
     return val;
 }
+
 uint32_t rmt_get_sound_freq(void) { 
-    RMT_LOCK();
+    PWM_LOCK();
     uint32_t val = state.sound_freq;
-    RMT_UNLOCK();
+    PWM_UNLOCK();
     return val;
 }
+
 uint8_t rmt_get_sound_duty(void) { 
-    RMT_LOCK();
+    PWM_LOCK();
     uint8_t val = state.sound_duty;
-    RMT_UNLOCK();
+    PWM_UNLOCK();
     return val;
 }
