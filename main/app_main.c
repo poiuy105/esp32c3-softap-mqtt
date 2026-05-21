@@ -216,10 +216,7 @@ void app_main(void)
     ESP_LOGI(TAG, "Config loaded: SSID=%s, MQTT=%s:%d",
              app_config.wifi_ssid, app_config.mqtt_uri, app_config.mqtt_port);
 
-    // Initialize drivers
     // Initialize drivers with error handling
-    esp_err_t ret;
-    
     ret = gpio_control_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "GPIO control init failed: %s", esp_err_to_name(ret));

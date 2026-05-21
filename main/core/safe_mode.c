@@ -1,6 +1,7 @@
 #include "safe_mode.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "gpio_control.h"

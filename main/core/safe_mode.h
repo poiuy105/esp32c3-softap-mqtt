@@ -2,6 +2,7 @@
 #define SAFE_MODE_H
 
 #include "esp_err.h"
+#include <stdbool.h>
 
 /**
  * @brief Safe mode error codes
