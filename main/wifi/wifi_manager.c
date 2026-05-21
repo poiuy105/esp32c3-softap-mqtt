@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <string.h>
 #include "wifi_manager.h"
 #include "esp_log.h"
@@ -155,5 +156,91 @@ esp_err_t wifi_manager_stop_softap(void)
     }
     
     ESP_LOGI(TAG, "SoftAP stopped");
+    return ESP_OK;
+}
+
+esp_err_t wifi_manager_scan_wifi(wifi_scan_results_t *results)
+{
+    if (results == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    ESP_LOGI(TAG, "Starting WiFi scan...");
+    
+    // Initialize results
+    memset(results, 0, sizeof(wifi_scan_results_t));
+    
+    // Configure scan parameters
+    wifi_scan_config_t scan_config = {
+        .ssid = NULL,
+        .bssid = NULL,
+        .channel = 0,
+        .show_hidden = true,
+        .scan_type = WIFI_SCAN_TYPE_ACTIVE,
+        .scan_time = {
+            .active = {
+                .min = 100,
+                .max = 300
+            }
+        }
+    };
+    
+    // Start scan
+    esp_err_t ret = esp_wifi_scan_start(&scan_config, true);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to start WiFi scan: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    // Get scan results
+    uint16_t ap_count = 0;
+    ret = esp_wifi_scan_get_ap_num(&ap_count);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get AP count: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    ESP_LOGI(TAG, "Found %d APs", ap_count);
+    
+    if (ap_count == 0) {
+        return ESP_OK;
+    }
+    
+    // Limit to maximum results
+    if (ap_count > WIFI_SCAN_MAX_RESULTS) {
+        ap_count = WIFI_SCAN_MAX_RESULTS;
+    }
+    
+    // Allocate buffer for AP records
+    wifi_ap_record_t *ap_records = malloc(sizeof(wifi_ap_record_t) * ap_count);
+    if (ap_records == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate memory for AP records");
+        return ESP_ERR_NO_MEM;
+    }
+    
+    ret = esp_wifi_scan_get_ap_records(&ap_count, ap_records);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get AP records: %s", esp_err_to_name(ret));
+        free(ap_records);
+        return ret;
+    }
+    
+    // Copy results to output structure
+    results->count = ap_count;
+    for (uint16_t i = 0; i < ap_count; i++) {
+        strncpy(results->aps[i].ssid, (char *)ap_records[i].ssid, sizeof(results->aps[i].ssid) - 1);
+        memcpy(results->aps[i].bssid, ap_records[i].bssid, sizeof(results->aps[i].bssid));
+        results->aps[i].rssi = ap_records[i].rssi;
+        results->aps[i].channel = ap_records[i].primary;
+        results->aps[i].authmode = ap_records[i].authmode;
+        
+        ESP_LOGI(TAG, "AP %d: SSID=%s, RSSI=%d, Channel=%d, Auth=%d", 
+                 i, results->aps[i].ssid, results->aps[i].rssi, 
+                 results->aps[i].channel, results->aps[i].authmode);
+    }
+    
+    free(ap_records);
+    
+    ESP_LOGI(TAG, "WiFi scan completed, found %d APs", results->count);
     return ESP_OK;
 }

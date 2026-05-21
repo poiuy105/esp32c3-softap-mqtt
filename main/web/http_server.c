@@ -14,6 +14,13 @@ esp_err_t root_handler(httpd_req_t *req)
     return httpd_resp_send(req, INDEX_HTML, strlen(INDEX_HTML));
 }
 
+static esp_err_t captive_redirect_handler(httpd_req_t *req) {
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "/");
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
 esp_err_t http_server_start(void)
 {
     ESP_LOGI(TAG, "Starting HTTP server");
@@ -34,7 +41,15 @@ esp_err_t http_server_start(void)
         
         api_handlers_register(server);
         
-        ESP_LOGI(TAG, "HTTP server started successfully");
+        httpd_uri_t catch_all = {
+            .uri = "/*",
+            .method = HTTP_GET,
+            .handler = captive_redirect_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(server, &catch_all);
+        
+        ESP_LOGI(TAG, "HTTP server server started successfully");
         return ESP_OK;
     }
     

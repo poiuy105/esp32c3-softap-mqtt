@@ -4,6 +4,7 @@
 #include "cJSON.h"
 #include "nvs_config.h"
 #include "state_machine.h"
+#include "wifi_manager.h"
 
 static const char *TAG = "api_handlers";
 
@@ -160,6 +161,48 @@ static esp_err_t get_status_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t get_scan_handler(httpd_req_t *req) {
+    ESP_LOGI(TAG, "GET /api/scan");
+    
+    wifi_scan_results_t results = {0};
+    
+    esp_err_t err = wifi_manager_scan_wifi(&results);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi scan failed: %s", esp_err_to_name(err));
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Scan failed");
+        return ESP_FAIL;
+    }
+    
+    cJSON *root = cJSON_CreateArray();
+    for (uint16_t i = 0; i < results.count; i++) {
+        cJSON *ap = cJSON_CreateObject();
+        cJSON_AddStringToObject(ap, "ssid", results.aps[i].ssid);
+        cJSON_AddNumberToObject(ap, "rssi", results.aps[i].rssi);
+        cJSON_AddNumberToObject(ap, "channel", results.aps[i].channel);
+        
+        const char *security = (results.aps[i].authmode != WIFI_AUTH_OPEN) ? "SECURED" : "OPEN";
+        cJSON_AddStringToObject(ap, "security", security);
+        
+        cJSON_AddItemToArray(root, ap);
+    }
+    
+    char *json_str = cJSON_Print(root);
+    cJSON_Delete(root);
+    
+    if (json_str == NULL) {
+        ESP_LOGE(TAG, "Failed to print JSON");
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory error");
+        return ESP_FAIL;
+    }
+    
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, json_str, strlen(json_str));
+    free(json_str);
+    
+    ESP_LOGI(TAG, "Scan result: %d APs found", results.count);
+    return ESP_OK;
+}
+
 esp_err_t api_handlers_register(httpd_handle_t server)
 {
     ESP_LOGI(TAG, "Registering API handlers");
@@ -187,6 +230,14 @@ esp_err_t api_handlers_register(httpd_handle_t server)
         .user_ctx = NULL
     };
     httpd_register_uri_handler(server, &status_get);
+    
+    httpd_uri_t scan_get = {
+        .uri = "/api/scan",
+        .method = HTTP_GET,
+        .handler = get_scan_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &scan_get);
     
     ESP_LOGI(TAG, "API handlers registered");
     return ESP_OK;

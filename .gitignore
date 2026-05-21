@@ -51,8 +51,10 @@ logs.txt
 
 # Trae AI internal files
 .trae/
+.uploads/
 
 # bin files
 mergeed.bin/
 
 xiaozhi/
+docs/

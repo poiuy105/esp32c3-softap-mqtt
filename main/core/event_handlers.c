@@ -7,6 +7,7 @@ static const char *TAG = "event_handlers";
 static esp_event_handler_instance_t wifi_event_handler_instance = NULL;
 static esp_event_handler_instance_t ip_event_handler_instance = NULL;
 static EventGroupHandle_t wifi_event_group = NULL;
+static bool auto_connect_enabled = false;
 
 void event_handlers_set_wifi_event_group(EventGroupHandle_t event_group)
 {
@@ -19,7 +20,9 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
         switch (event_id) {
             case WIFI_EVENT_STA_START:
                 ESP_LOGI(TAG, "WiFi station started");
-                esp_wifi_connect();
+                if (auto_connect_enabled) {
+                    esp_wifi_connect();
+                }
                 break;
             case WIFI_EVENT_STA_STOP:
                 ESP_LOGI(TAG, "WiFi station stopped");
@@ -69,4 +72,8 @@ void event_handlers_register_wifi_handler(void)
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, &wifi_event_handler_instance));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, &ip_event_handler_instance));
     ESP_LOGI(TAG, "WiFi event handlers registered");
+}
+
+void event_handlers_set_auto_connect(bool enabled) {
+    auto_connect_enabled = enabled;
 }
