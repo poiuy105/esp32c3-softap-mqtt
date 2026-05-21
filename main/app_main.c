@@ -22,6 +22,7 @@
 #include "dns_server.h"
 #include "rmt_driver.h"
 #include "gpio_control.h"
+#include "button_driver.h"
 #include "safe_mode.h"
 
 #define WIFI_CONNECTED_BIT BIT0

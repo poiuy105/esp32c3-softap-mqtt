@@ -7,9 +7,6 @@
 // LED GPIO (active low)
 #define GPIO_LED    4
 
-// Button GPIO (active low, pulled high)
-#define GPIO_BTN    9
-
 // LED blink modes
 typedef enum {
     LED_MODE_OFF = 0,       // LED off
@@ -20,7 +17,7 @@ typedef enum {
 } led_mode_t;
 
 /**
- * @brief Initialize GPIO control for LED and button
+ * @brief Initialize GPIO control for LED
  * 
  * @return esp_err_t ESP_OK on success
  */
@@ -45,13 +42,5 @@ esp_err_t gpio_set_led_mode(led_mode_t mode);
  * @brief Get current LED mode
  */
 led_mode_t gpio_get_led_mode(void);
-
-/**
- * @brief Initialize button with long-press detection
- *        Long press >= 3s: LED warning blink
- *        Long press >= 5s: factory reset (calls callback)
- */
-typedef void (*button_factory_reset_callback_t)(void);
-esp_err_t button_init(button_factory_reset_callback_t callback);
 
 #endif // GPIO_CONTROL_H

@@ -2,59 +2,41 @@
 #include <stdio.h>
 #include "ha_discovery.h"
 #include "app_mqtt.h"
+#include "device_info.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
-#include "esp_mac.h"
 #include "esp_netif.h"
 #include "cJSON.h"
-#include "nvs_config.h"
 #include "gpio_control.h"
 #include "rmt_driver.h"
 
 static const char *TAG = "ha_discovery";
 
-// Node ID based on MAC address (e.g., "esp32c3_aabbccdd")
-static char node_id[32] = {0};
-// MAC address string (e.g., "AA:BB:CC:DD:EE:FF")
-static char mac_str[18] = {0};
-// Device name with MAC suffix (e.g., "ESP32-C3 AA:BB:CC")
-static char device_name[32] = {0};
-
 // Topic buffers
 static char avail_topic[64] = {0};
+static bool initialized = false;
 
-// Initialize node_id from MAC address
-static void init_node_id(void)
+// Initialize topics from device_info
+static void init_topics(void)
 {
-    if (node_id[0] != '\0') return;
-
-    uint8_t mac[6] = {0};
-    esp_read_mac(mac, ESP_MAC_WIFI_STA);
-
-    snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
-             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    snprintf(node_id, sizeof(node_id), "esp32c3_%02x%02x%02x%02x",
-             mac[2], mac[3], mac[4], mac[5]);
-    snprintf(device_name, sizeof(device_name), "ESP32-C3 %02X:%02X:%02X",
-             mac[3], mac[4], mac[5]);
-    snprintf(avail_topic, sizeof(avail_topic), "%s/status", node_id);
-
-    ESP_LOGI(TAG, "Node ID: %s, Device: %s", node_id, device_name);
+    if (initialized) return;
+    snprintf(avail_topic, sizeof(avail_topic), "%s/status", device_info_get_node_id());
+    initialized = true;
 }
 
 // Build the common device info JSON object
 static cJSON* build_device_info(void)
 {
     cJSON *device = cJSON_CreateObject();
-    cJSON_AddStringToObject(device, "name", device_name);
+    cJSON_AddStringToObject(device, "name", device_info_get_device_name());
     cJSON_AddStringToObject(device, "manufacturer", "Espressif");
     cJSON_AddStringToObject(device, "model", "ESP32-C3");
-    cJSON_AddStringToObject(device, "identifiers", node_id);
+    cJSON_AddStringToObject(device, "identifiers", device_info_get_node_id());
 
     cJSON *connections = cJSON_CreateArray();
     cJSON *conn = cJSON_CreateArray();
     cJSON_AddItemToArray(conn, cJSON_CreateString("mac"));
-    cJSON_AddItemToArray(conn, cJSON_CreateString(mac_str));
+    cJSON_AddItemToArray(conn, cJSON_CreateString(device_info_get_mac_string()));
     cJSON_AddItemToArray(connections, conn);
     cJSON_AddItemToObject(device, "connections", connections);
 
@@ -66,6 +48,7 @@ static esp_err_t publish_sensor_config(const char *object_id, const char *name,
                                         const char *device_class,
                                         const char *unit, const char *state_class)
 {
+    const char *node_id = device_info_get_node_id();
     char topic[128];
     snprintf(topic, sizeof(topic), "homeassistant/sensor/%s/%s/config", node_id, object_id);
 
@@ -103,7 +86,7 @@ static esp_err_t publish_sensor_config(const char *object_id, const char *name,
         return ESP_FAIL;
     }
 
-    esp_err_t err = app_mqtt_publish(topic, json_str, 1, 1);  // QoS 1, retain
+    esp_err_t err = app_mqtt_publish(topic, json_str, 1, 1);
     free(json_str);
     return err;
 }
@@ -112,6 +95,7 @@ static esp_err_t publish_sensor_config(const char *object_id, const char *name,
 static esp_err_t publish_switch_config(const char *object_id, const char *name,
                                         const char *cmd_topic_suffix)
 {
+    const char *node_id = device_info_get_node_id();
     char topic[128];
     snprintf(topic, sizeof(topic), "homeassistant/switch/%s/%s/config", node_id, object_id);
 
@@ -147,7 +131,7 @@ static esp_err_t publish_switch_config(const char *object_id, const char *name,
         return ESP_FAIL;
     }
 
-    esp_err_t err = app_mqtt_publish(topic, json_str, 1, 1);  // QoS 1, retain
+    esp_err_t err = app_mqtt_publish(topic, json_str, 1, 1);
     free(json_str);
     return err;
 }
@@ -158,6 +142,7 @@ static esp_err_t publish_number_config(const char *object_id, const char *name,
                                         double min_val, double max_val, double step,
                                         const char *unit)
 {
+    const char *node_id = device_info_get_node_id();
     char topic[128];
     snprintf(topic, sizeof(topic), "homeassistant/number/%s/%s/config", node_id, object_id);
 
@@ -195,7 +180,7 @@ static esp_err_t publish_number_config(const char *object_id, const char *name,
         return ESP_FAIL;
     }
 
-    esp_err_t err = app_mqtt_publish(topic, json_str, 1, 1);  // QoS 1, retain
+    esp_err_t err = app_mqtt_publish(topic, json_str, 1, 1);
     free(json_str);
     return err;
 }
@@ -204,6 +189,7 @@ static esp_err_t publish_number_config(const char *object_id, const char *name,
 static esp_err_t publish_binary_sensor_config(const char *object_id, const char *name,
                                                const char *device_class)
 {
+    const char *node_id = device_info_get_node_id();
     char topic[128];
     snprintf(topic, sizeof(topic), "homeassistant/binary_sensor/%s/%s/config", node_id, object_id);
 
@@ -235,7 +221,7 @@ static esp_err_t publish_binary_sensor_config(const char *object_id, const char 
         return ESP_FAIL;
     }
 
-    esp_err_t err = app_mqtt_publish(topic, json_str, 1, 1);  // QoS 1, retain
+    esp_err_t err = app_mqtt_publish(topic, json_str, 1, 1);
     free(json_str);
     return err;
 }
@@ -243,15 +229,16 @@ static esp_err_t publish_binary_sensor_config(const char *object_id, const char 
 // Helper: publish state to topic
 static esp_err_t publish_state(const char *object_id, const char *value)
 {
+    const char *node_id = device_info_get_node_id();
     char topic[96];
     snprintf(topic, sizeof(topic), "%s/%s/state", node_id, object_id);
-    return app_mqtt_publish(topic, value, 1, 1);  // QoS 1, retain
+    return app_mqtt_publish(topic, value, 1, 1);
 }
 
 esp_err_t ha_discovery_publish_configs(void)
 {
-    init_node_id();
-    ESP_LOGI(TAG, "Publishing HA discovery configs for device: %s", device_name);
+    init_topics();
+    ESP_LOGI(TAG, "Publishing HA discovery configs for device: %s", device_info_get_device_name());
 
     // WiFi SSID sensor
     publish_sensor_config("wifi_ssid", "WiFi 名称", NULL, NULL, NULL);
@@ -298,7 +285,8 @@ esp_err_t ha_discovery_publish_configs(void)
 
 esp_err_t ha_discovery_publish_states(void)
 {
-    init_node_id();
+    init_topics();
+    const char *node_id = device_info_get_node_id();
 
     // WiFi SSID
     wifi_ap_record_t ap_info;
@@ -367,12 +355,12 @@ esp_err_t ha_discovery_publish_states(void)
 
 esp_err_t ha_discovery_publish_online(void)
 {
-    init_node_id();
-    return app_mqtt_publish(avail_topic, "online", 1, 1);  // QoS 1, retain
+    init_topics();
+    return app_mqtt_publish(avail_topic, "online", 1, 1);
 }
 
 esp_err_t ha_discovery_publish_offline(void)
 {
-    init_node_id();
-    return app_mqtt_publish(avail_topic, "offline", 1, 1);  // QoS 1, retain
+    init_topics();
+    return app_mqtt_publish(avail_topic, "offline", 1, 1);
 }
