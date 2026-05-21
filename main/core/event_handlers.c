@@ -23,18 +23,23 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
                 break;
             case WIFI_EVENT_STA_STOP:
                 ESP_LOGI(TAG, "WiFi station stopped");
-                state_machine_trigger_event(EVENT_WIFI_DISCONNECTED);
                 break;
             case WIFI_EVENT_STA_CONNECTED:
                 ESP_LOGI(TAG, "WiFi station connected");
                 break;
-            case WIFI_EVENT_STA_DISCONNECTED:
-                ESP_LOGI(TAG, "WiFi station disconnected");
+            case WIFI_EVENT_STA_DISCONNECTED: {
+                int reason = 0;
+                if (event_data) {
+                    wifi_event_sta_disconnected_t *disconn = (wifi_event_sta_disconnected_t *)event_data;
+                    reason = disconn->reason;
+                }
+                ESP_LOGW(TAG, "WiFi station disconnected, reason: %d", reason);
                 if (wifi_event_group) {
                     xEventGroupSetBits(wifi_event_group, WIFI_FAIL_BIT);
                 }
-                state_machine_trigger_event(EVENT_WIFI_DISCONNECTED);
+                // Do NOT trigger state machine events here - let app_task handle it
                 break;
+            }
             default:
                 break;
         }
@@ -45,7 +50,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
                 if (wifi_event_group) {
                     xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
                 }
-                state_machine_trigger_event(EVENT_WIFI_CONNECTED);
+                // Do NOT trigger state machine events here - let app_task handle it
                 break;
             default:
                 break;

@@ -82,28 +82,49 @@ static void app_task(void *arg)
                     
                     // Reload config after saving (to get updated values)
                     nvs_load_all_config(&app_config);
-                    ESP_LOGI(TAG, "Reloaded config: SSID=%s", app_config.wifi_ssid);
+                    ESP_LOGI(TAG, "Reloaded config: SSID=%s, password_len=%d", 
+                             app_config.wifi_ssid, strlen(app_config.wifi_password));
                     
                     // Create event group for WiFi connection sync
                     wifi_event_group = xEventGroupCreate();
                     event_handlers_set_wifi_event_group(wifi_event_group);
                     
-                    // Start WiFi STA connection
-                    wifi_manager_connect_sta(app_config.wifi_ssid, app_config.wifi_password);
+                    // Start WiFi STA connection with retry
+                    bool wifi_connected = false;
+                    int retry_count = 0;
+                    int max_retries = 3;
                     
-                    // Wait for WiFi connection with timeout (30 seconds)
-                    ESP_LOGI(TAG, "Waiting for WiFi connection...");
-                    EventBits_t bits = xEventGroupWaitBits(wifi_event_group,
-                                                           WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-                                                           pdFALSE,
-                                                           pdFALSE,
-                                                           pdMS_TO_TICKS(30000));
+                    while (retry_count < max_retries && !wifi_connected) {
+                        if (retry_count > 0) {
+                            ESP_LOGW(TAG, "WiFi retry %d/%d...", retry_count, max_retries);
+                            vTaskDelay(pdMS_TO_TICKS(5000));
+                        }
+                        
+                        wifi_manager_connect_sta(app_config.wifi_ssid, app_config.wifi_password);
+                        
+                        ESP_LOGI(TAG, "Waiting for WiFi connection (attempt %d/%d)...", 
+                                 retry_count + 1, max_retries);
+                        EventBits_t bits = xEventGroupWaitBits(wifi_event_group,
+                                                               WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+                                                               pdTRUE,  // Clear bits on exit
+                                                               pdFALSE,
+                                                               pdMS_TO_TICKS(15000));
+                        
+                        if (bits & WIFI_CONNECTED_BIT) {
+                            ESP_LOGI(TAG, "WiFi connected successfully");
+                            wifi_connected = true;
+                        } else {
+                            ESP_LOGW(TAG, "WiFi connection attempt %d failed", retry_count + 1);
+                            wifi_manager_stop_sta();
+                            vTaskDelay(pdMS_TO_TICKS(1000));
+                        }
+                        retry_count++;
+                    }
                     
-                    if (bits & WIFI_CONNECTED_BIT) {
-                        ESP_LOGI(TAG, "WiFi connected successfully");
+                    if (wifi_connected) {
                         state_machine_trigger_event(EVENT_WIFI_CONNECTED);
                     } else {
-                        ESP_LOGE(TAG, "WiFi connection failed or timeout");
+                        ESP_LOGE(TAG, "WiFi connection failed after %d retries, entering SOFTAP", max_retries);
                         state_machine_trigger_event(EVENT_WIFI_DISCONNECTED);
                     }
                     
