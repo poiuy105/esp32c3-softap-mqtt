@@ -15,8 +15,18 @@ esp_err_t root_handler(httpd_req_t *req)
 }
 
 static esp_err_t captive_redirect_handler(httpd_req_t *req) {
+    ESP_LOGI(TAG, "Captive redirect: %s", req->uri);
     httpd_resp_set_status(req, "302 Found");
     httpd_resp_set_hdr(req, "Location", "/");
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
+static esp_err_t captive_portal_detect_handler(httpd_req_t *req) {
+    ESP_LOGI(TAG, "Captive portal detect: %s", req->uri);
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "/");
+    httpd_resp_set_type(req, "text/html");
     httpd_resp_send(req, NULL, 0);
     return ESP_OK;
 }
@@ -40,7 +50,20 @@ esp_err_t http_server_start(void)
         httpd_register_uri_handler(server, &root_uri);
         
         api_handlers_register(server);
-        
+
+        // Captive portal detection paths (Android / iOS / Windows / macOS)
+        httpd_uri_t captive_uris[] = {
+            { .uri = "/generate_204",       .method = HTTP_GET, .handler = captive_portal_detect_handler, .user_ctx = NULL },
+            { .uri = "/gen_204",            .method = HTTP_GET, .handler = captive_portal_detect_handler, .user_ctx = NULL },
+            { .uri = "/hotspot-detect.html",.method = HTTP_GET, .handler = captive_portal_detect_handler, .user_ctx = NULL },
+            { .uri = "/connecttest.txt",    .method = HTTP_GET, .handler = captive_portal_detect_handler, .user_ctx = NULL },
+            { .uri = "/redirect",           .method = HTTP_GET, .handler = captive_portal_detect_handler, .user_ctx = NULL },
+            { .uri = "/fwlink",             .method = HTTP_GET, .handler = captive_portal_detect_handler, .user_ctx = NULL },
+        };
+        for (int i = 0; i < sizeof(captive_uris) / sizeof(captive_uris[0]); i++) {
+            httpd_register_uri_handler(server, &captive_uris[i]);
+        }
+
         httpd_uri_t catch_all = {
             .uri = "/*",
             .method = HTTP_GET,
