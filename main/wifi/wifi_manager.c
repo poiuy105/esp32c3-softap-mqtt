@@ -276,17 +276,12 @@ esp_err_t wifi_manager_scan_wifi(wifi_scan_results_t *results)
         ap_count = WIFI_SCAN_MAX_RESULTS;
     }
     
-    // Allocate buffer for AP records
-    wifi_ap_record_t *ap_records = malloc(sizeof(wifi_ap_record_t) * ap_count);
-    if (ap_records == NULL) {
-        ESP_LOGE(TAG, "Failed to allocate memory for AP records");
-        return ESP_ERR_NO_MEM;
-    }
+    // Use static buffer to avoid dynamic allocation
+    static wifi_ap_record_t ap_records[WIFI_SCAN_MAX_RESULTS];
     
     ret = esp_wifi_scan_get_ap_records(&ap_count, ap_records);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to get AP records: %s", esp_err_to_name(ret));
-        free(ap_records);
         return ret;
     }
     
@@ -303,8 +298,6 @@ esp_err_t wifi_manager_scan_wifi(wifi_scan_results_t *results)
                  i, results->aps[i].ssid, results->aps[i].rssi, 
                  results->aps[i].channel, results->aps[i].authmode);
     }
-    
-    free(ap_records);
     
     // Restore original mode if needed
     if (need_switch_mode) {

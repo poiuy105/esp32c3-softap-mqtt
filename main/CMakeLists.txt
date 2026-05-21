@@ -15,6 +15,7 @@ idf_component_register(
         "drivers/rmt_driver.c"
         "drivers/gpio_control.c"
         "utils/system_monitor.c"
+        "utils/hw_monitor.c"
     INCLUDE_DIRS
         "."
         "core"
