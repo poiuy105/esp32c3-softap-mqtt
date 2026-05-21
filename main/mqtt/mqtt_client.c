@@ -9,11 +9,16 @@
 #include "gpio_control.h"
 #include "rmt_driver.h"
 #include "nvs_config.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 static const char *TAG = "mqtt_client";
 
 static esp_mqtt_client_handle_t mqtt_client = NULL;
 static bool is_connected = false;
+
+// Mutex for thread-safe access
+static SemaphoreHandle_t mqtt_mutex = NULL;
 
 // Buffer for formatted URI
 static char formatted_uri[256];
@@ -23,6 +28,10 @@ static char lwt_topic[64] = {0};
 
 // Node ID for topic prefix
 static char node_id[32] = {0};
+
+// Helper macros for mutex lock/unlock
+#define MQTT_LOCK()   do { if (mqtt_mutex) xSemaphoreTake(mqtt_mutex, portMAX_DELAY); } while(0)
+#define MQTT_UNLOCK() do { if (mqtt_mutex) xSemaphoreGive(mqtt_mutex); } while(0)
 
 // Helper to save and publish state
 static void save_and_publish_state(void)
@@ -163,7 +172,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT connected");
+            MQTT_LOCK();
             is_connected = true;
+            MQTT_UNLOCK();
             
             // Subscribe to command topics
             char cmd_topic[64];
@@ -197,7 +208,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "MQTT disconnected");
+            MQTT_LOCK();
             is_connected = false;
+            MQTT_UNLOCK();
             
             // Trigger state machine event
             state_machine_trigger_event(EVENT_MQTT_DISCONNECTED);
@@ -301,53 +314,73 @@ esp_err_t app_mqtt_connect(const char *broker_uri, uint16_t port,
         },
     };
     
+    // Initialize mutex if not already done
+    if (mqtt_mutex == NULL) {
+        mqtt_mutex = xSemaphoreCreateMutex();
+    }
+    
+    MQTT_LOCK();
     mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
     if (mqtt_client == NULL) {
+        MQTT_UNLOCK();
         ESP_LOGE(TAG, "Failed to initialize MQTT client");
         return ESP_FAIL;
     }
     
     esp_mqtt_client_register_event(mqtt_client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
+    esp_err_t ret = esp_mqtt_client_start(mqtt_client);
+    MQTT_UNLOCK();
     
-    return esp_mqtt_client_start(mqtt_client);
+    return ret;
 }
 
 esp_err_t app_mqtt_disconnect(void)
 {
+    MQTT_LOCK();
     if (mqtt_client) {
         esp_mqtt_client_stop(mqtt_client);
         esp_mqtt_client_destroy(mqtt_client);
         mqtt_client = NULL;
         is_connected = false;
     }
+    MQTT_UNLOCK();
     return ESP_OK;
 }
 
 esp_err_t app_mqtt_subscribe(const char *topic, int qos)
 {
+    MQTT_LOCK();
     if (mqtt_client && is_connected) {
         char topic_buf[128] = {0};
         strncpy(topic_buf, topic, sizeof(topic_buf) - 1);
         int msg_id = esp_mqtt_client_subscribe(mqtt_client, topic_buf, qos);
+        MQTT_UNLOCK();
         ESP_LOGI(TAG, "Subscribed to topic '%s', msg_id=%d", topic, msg_id);
         return ESP_OK;
     }
+    MQTT_UNLOCK();
     return ESP_FAIL;
 }
 
 esp_err_t app_mqtt_publish(const char *topic, const char *payload, int qos, int retain)
 {
+    MQTT_LOCK();
     if (mqtt_client && is_connected) {
         char topic_buf[128] = {0};
         strncpy(topic_buf, topic, sizeof(topic_buf) - 1);
         int msg_id = esp_mqtt_client_publish(mqtt_client, topic_buf, payload, 0, qos, retain);
+        MQTT_UNLOCK();
         ESP_LOGI(TAG, "Published to topic '%s', msg_id=%d", topic, msg_id);
         return ESP_OK;
     }
+    MQTT_UNLOCK();
     return ESP_FAIL;
 }
 
 bool app_mqtt_is_connected(void)
 {
-    return is_connected;
+    MQTT_LOCK();
+    bool connected = is_connected;
+    MQTT_UNLOCK();
+    return connected;
 }

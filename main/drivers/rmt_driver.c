@@ -2,10 +2,18 @@
 #include "esp_log.h"
 #include "driver/rmt_tx.h"
 #include "driver/gpio.h"
-#include "soc/rmt_struct.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include <math.h>
 
 static const char *TAG = "RMT_DRV";
+
+// Mutex for thread-safe access
+static SemaphoreHandle_t rmt_mutex = NULL;
+
+// Helper macros for mutex lock/unlock
+#define RMT_LOCK()   do { if (rmt_mutex) xSemaphoreTake(rmt_mutex, portMAX_DELAY); } while(0)
+#define RMT_UNLOCK() do { if (rmt_mutex) xSemaphoreGive(rmt_mutex); } while(0)
 
 // RMT channel handles
 static rmt_channel_handle_t light_chan = NULL;
@@ -51,6 +59,11 @@ static rmt_encoder_handle_t create_bytes_encoder(void)
 esp_err_t rmt_driver_init(void)
 {
     ESP_LOGI(TAG, "Initializing RMT driver");
+    
+    // Create mutex for thread-safe access
+    if (rmt_mutex == NULL) {
+        rmt_mutex = xSemaphoreCreateMutex();
+    }
     
     esp_err_t ret;
     
@@ -158,19 +171,23 @@ esp_err_t rmt_set_light(bool enable, uint32_t freq_hz, uint8_t duty_percent)
     if (freq_hz > FREQ_MAX) freq_hz = FREQ_MAX;
     if (duty_percent > DUTY_LIGHT_MAX) duty_percent = DUTY_LIGHT_MAX;
     
+    RMT_LOCK();
     state.light_enabled = enable;
     state.light_freq = freq_hz;
     state.light_duty = duty_percent;
     
+    esp_err_t ret;
     if (enable && freq_hz > 0 && duty_percent > 0) {
-        return set_pwm_output(light_chan, light_encoder, freq_hz, duty_percent);
+        ret = set_pwm_output(light_chan, light_encoder, freq_hz, duty_percent);
     } else {
         // Stop output
         rmt_disable(light_chan);
         rmt_enable(light_chan);
+        ret = ESP_OK;
     }
+    RMT_UNLOCK();
     
-    return ESP_OK;
+    return ret;
 }
 
 esp_err_t rmt_set_sound(bool enable, uint32_t freq_hz, uint8_t duty_percent)
@@ -182,6 +199,7 @@ esp_err_t rmt_set_sound(bool enable, uint32_t freq_hz, uint8_t duty_percent)
     if (duty_percent < DUTY_SOUND_MIN) duty_percent = DUTY_SOUND_MIN;
     if (duty_percent > DUTY_SOUND_MAX) duty_percent = DUTY_SOUND_MAX;
     
+    RMT_LOCK();
     state.sound_enabled = enable;
     state.sound_freq = freq_hz;
     state.sound_duty = duty_percent;
@@ -189,21 +207,54 @@ esp_err_t rmt_set_sound(bool enable, uint32_t freq_hz, uint8_t duty_percent)
     // Control sound enable GPIO
     gpio_set_level(GPIO_SOUND_EN, enable ? 1 : 0);
     
+    esp_err_t ret;
     if (enable && freq_hz > 0) {
-        return set_pwm_output(sound_chan, sound_encoder, freq_hz, duty_percent);
+        ret = set_pwm_output(sound_chan, sound_encoder, freq_hz, duty_percent);
     } else {
         // Stop output
         rmt_disable(sound_chan);
         rmt_enable(sound_chan);
+        ret = ESP_OK;
     }
+    RMT_UNLOCK();
     
-    return ESP_OK;
+    return ret;
 }
 
-// Getters
-bool rmt_get_light_enabled(void) { return state.light_enabled; }
-uint32_t rmt_get_light_freq(void) { return state.light_freq; }
-uint8_t rmt_get_light_duty(void) { return state.light_duty; }
-bool rmt_get_sound_enabled(void) { return state.sound_enabled; }
-uint32_t rmt_get_sound_freq(void) { return state.sound_freq; }
-uint8_t rmt_get_sound_duty(void) { return state.sound_duty; }
+// Getters - thread-safe
+bool rmt_get_light_enabled(void) { 
+    RMT_LOCK();
+    bool val = state.light_enabled;
+    RMT_UNLOCK();
+    return val;
+}
+uint32_t rmt_get_light_freq(void) { 
+    RMT_LOCK();
+    uint32_t val = state.light_freq;
+    RMT_UNLOCK();
+    return val;
+}
+uint8_t rmt_get_light_duty(void) { 
+    RMT_LOCK();
+    uint8_t val = state.light_duty;
+    RMT_UNLOCK();
+    return val;
+}
+bool rmt_get_sound_enabled(void) { 
+    RMT_LOCK();
+    bool val = state.sound_enabled;
+    RMT_UNLOCK();
+    return val;
+}
+uint32_t rmt_get_sound_freq(void) { 
+    RMT_LOCK();
+    uint32_t val = state.sound_freq;
+    RMT_UNLOCK();
+    return val;
+}
+uint8_t rmt_get_sound_duty(void) { 
+    RMT_LOCK();
+    uint8_t val = state.sound_duty;
+    RMT_UNLOCK();
+    return val;
+}
