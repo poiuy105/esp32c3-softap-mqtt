@@ -116,16 +116,28 @@ esp_err_t app_mqtt_connect(const char *broker_uri, uint16_t port,
     const char *fmt_uri = format_mqtt_uri(broker_uri, port);
     ESP_LOGI(TAG, "Using MQTT URI: %s", fmt_uri);
     
-    // Parse hostname and port from URI for v5.1 compatibility
+    // Parse hostname, port and transport from URI for v5.1 compatibility
     char hostname[128] = {0};
     int mqtt_port = 1883;
+    esp_mqtt_transport_t transport = MQTT_TRANSPORT_OVER_TCP;
     const char *uri_start = fmt_uri;
     
-    // Skip protocol prefix
-    if (strncmp(fmt_uri, "mqtt://", 7) == 0) uri_start = fmt_uri + 7;
-    else if (strncmp(fmt_uri, "mqtts://", 8) == 0) { uri_start = fmt_uri + 8; mqtt_port = 8883; }
-    else if (strncmp(fmt_uri, "ws://", 5) == 0) uri_start = fmt_uri + 5;
-    else if (strncmp(fmt_uri, "wss://", 6) == 0) { uri_start = fmt_uri + 6; mqtt_port = 443; }
+    // Skip protocol prefix and determine transport
+    if (strncmp(fmt_uri, "mqtt://", 7) == 0) {
+        uri_start = fmt_uri + 7;
+        transport = MQTT_TRANSPORT_OVER_TCP;
+    } else if (strncmp(fmt_uri, "mqtts://", 8) == 0) {
+        uri_start = fmt_uri + 8;
+        mqtt_port = 8883;
+        transport = MQTT_TRANSPORT_OVER_SSL;
+    } else if (strncmp(fmt_uri, "ws://", 5) == 0) {
+        uri_start = fmt_uri + 5;
+        transport = MQTT_TRANSPORT_OVER_WS;
+    } else if (strncmp(fmt_uri, "wss://", 6) == 0) {
+        uri_start = fmt_uri + 6;
+        mqtt_port = 443;
+        transport = MQTT_TRANSPORT_OVER_WSS;
+    }
     
     // Extract hostname (before ':' or '/')
     strncpy(hostname, uri_start, sizeof(hostname) - 1);
@@ -149,6 +161,7 @@ esp_err_t app_mqtt_connect(const char *broker_uri, uint16_t port,
         .broker = {
             .address.hostname = hostname,
             .address.port = mqtt_port,
+            .address.transport = transport,
         },
         .credentials = {
             .username = user_buf,
