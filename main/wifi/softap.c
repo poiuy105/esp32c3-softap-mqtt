@@ -3,6 +3,7 @@
 #include "softap.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
+#include "esp_efuse.h"
 #include "esp_netif.h"
 
 static const char *TAG = "softap";

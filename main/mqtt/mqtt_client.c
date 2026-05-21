@@ -4,6 +4,7 @@
 #include "state_machine.h"
 #include "esp_log.h"
 #include "esp_event.h"
+#include "esp_mac.h"
 #include "mqtt_client.h"
 
 static const char *TAG = "mqtt_client";
@@ -108,15 +109,40 @@ esp_err_t app_mqtt_connect(const char *broker_uri, uint16_t port,
 {
     ESP_LOGI(TAG, "Connecting to MQTT broker: %s (port: %d)", broker_uri, port);
     
-    const char *formatted_broker_uri = format_mqtt_uri(broker_uri, port);
-    ESP_LOGI(TAG, "Using MQTT URI: %s", formatted_broker_uri);
-    
     // Initialize LWT topic
     init_lwt_topic();
     
+    // Format URI into static buffer for MQTT config
+    const char *fmt_uri = format_mqtt_uri(broker_uri, port);
+    ESP_LOGI(TAG, "Using MQTT URI: %s", fmt_uri);
+    
+    // Parse hostname and port from URI for v5.1 compatibility
+    char hostname[128] = {0};
+    int mqtt_port = 1883;
+    const char *uri_start = fmt_uri;
+    
+    // Skip protocol prefix
+    if (strncmp(fmt_uri, "mqtt://", 7) == 0) uri_start = fmt_uri + 7;
+    else if (strncmp(fmt_uri, "mqtts://", 8) == 0) { uri_start = fmt_uri + 8; mqtt_port = 8883; }
+    else if (strncmp(fmt_uri, "ws://", 5) == 0) uri_start = fmt_uri + 5;
+    else if (strncmp(fmt_uri, "wss://", 6) == 0) { uri_start = fmt_uri + 6; mqtt_port = 443; }
+    
+    // Extract hostname (before ':' or '/')
+    strncpy(hostname, uri_start, sizeof(hostname) - 1);
+    char *colon = strchr(hostname, ':');
+    if (colon) {
+        *colon = '\0';
+        mqtt_port = atoi(colon + 1);
+    }
+    char *slash = strchr(hostname, '/');
+    if (slash) *slash = '\0';
+    
+    ESP_LOGI(TAG, "MQTT hostname: %s, port: %d", hostname, mqtt_port);
+    
     esp_mqtt_client_config_t mqtt_cfg = {
         .broker = {
-            .address.uri = formatted_broker_uri,
+            .address.hostname = hostname,
+            .address.port = mqtt_port,
         },
         .credentials = {
             .username = username,

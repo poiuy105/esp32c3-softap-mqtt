@@ -4,6 +4,7 @@
 #include "app_mqtt.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
+#include "esp_mac.h"
 #include "esp_netif.h"
 #include "cJSON.h"
 
@@ -214,7 +215,7 @@ esp_err_t ha_discovery_publish_states(void)
 
     // Heap free
     char heap_str[16];
-    snprintf(heap_str, sizeof(heap_str), "%u", esp_get_free_heap_size());
+    snprintf(heap_str, sizeof(heap_str), "%lu", (unsigned long)esp_get_free_heap_size());
     publish_state("heap_free", heap_str);
 
     // Uptime (seconds since boot)
