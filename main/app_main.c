@@ -8,6 +8,7 @@
 #include "esp_netif.h"
 #include "esp_event.h"
 #include "nvs_flash.h"
+#include "esp_task_wdt.h"
 
 #include "nvs_config.h"
 #include "state_machine.h"
@@ -61,9 +62,20 @@ static void app_init_state_machine(void)
 
 static void app_task(void *arg)
 {
+    // Register task with watchdog
+    esp_err_t wdt_ret = esp_task_wdt_add(NULL);
+    if (wdt_ret == ESP_OK) {
+        ESP_LOGI(TAG, "Task watchdog registered");
+    } else {
+        ESP_LOGW(TAG, "Failed to register task watchdog: %s", esp_err_to_name(wdt_ret));
+    }
+
     app_state_t current_state = STATE_INIT;
 
     while (1) {
+        // Feed watchdog
+        esp_task_wdt_reset();
+
         app_state_t new_state = state_machine_get_current_state();
 
         if (new_state != current_state) {
@@ -108,27 +120,33 @@ static void app_task(void *arg)
                     wifi_event_group = xEventGroupCreate();
                     event_handlers_set_wifi_event_group(wifi_event_group);
 
-                    // Start WiFi STA connection with retry
+                    // Start WiFi STA connection with exponential backoff retry
                     bool wifi_connected = false;
                     int retry_count = 0;
-                    int max_retries = 3;
+                    int retry_delay_ms = 5000;  // Start with 5 seconds
+                    const int max_retry_delay_ms = 60000;  // Max 60 seconds
 
-                    while (retry_count < max_retries && !wifi_connected) {
+                    while (!wifi_connected) {
                         if (retry_count > 0) {
-                            ESP_LOGW(TAG, "WiFi retry %d/%d...", retry_count, max_retries);
-                            vTaskDelay(pdMS_TO_TICKS(5000));
+                            ESP_LOGW(TAG, "WiFi retry %d (delay: %d ms)...", retry_count, retry_delay_ms);
+                            vTaskDelay(pdMS_TO_TICKS(retry_delay_ms));
+                            
+                            // Exponential backoff
+                            retry_delay_ms *= 2;
+                            if (retry_delay_ms > max_retry_delay_ms) {
+                                retry_delay_ms = max_retry_delay_ms;
+                            }
                         }
 
                         event_handlers_set_auto_connect(true);
                         wifi_manager_connect_sta(app_config.wifi_ssid, app_config.wifi_password);
 
-                        ESP_LOGI(TAG, "Waiting for WiFi connection (attempt %d/%d)...",
-                                 retry_count + 1, max_retries);
+                        ESP_LOGI(TAG, "Waiting for WiFi connection (attempt %d)...", retry_count + 1);
                         EventBits_t bits = xEventGroupWaitBits(wifi_event_group,
                                                                WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
                                                                pdTRUE,  // Clear bits on exit
                                                                pdFALSE,
-                                                               pdMS_TO_TICKS(15000));
+                                                               pdMS_TO_TICKS(20000));  // 20s timeout
 
                         if (bits & WIFI_CONNECTED_BIT) {
                             ESP_LOGI(TAG, "WiFi connected successfully");
@@ -143,9 +161,6 @@ static void app_task(void *arg)
 
                     if (wifi_connected) {
                         state_machine_trigger_event(EVENT_WIFI_CONNECTED);
-                    } else {
-                        ESP_LOGE(TAG, "WiFi connection failed after %d retries, entering SOFTAP", max_retries);
-                        state_machine_trigger_event(EVENT_WIFI_DISCONNECTED);
                     }
 
                     vEventGroupDelete(wifi_event_group);
@@ -168,6 +183,7 @@ static void app_task(void *arg)
                     // Periodic state reporting (every 30 seconds)
                     int report_count = 0;
                     while (state_machine_get_current_state() == STATE_RUNNING) {
+                        esp_task_wdt_reset();  // Feed watchdog
                         vTaskDelay(pdMS_TO_TICKS(1000));
                         report_count++;
                         if (report_count >= 30) {

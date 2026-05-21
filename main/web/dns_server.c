@@ -36,7 +36,7 @@ static void dns_server_task(void *pvParameters)
                           (struct sockaddr *)&client_addr, &addr_len);
         if (len < 0) {
             if (dns_socket >= 0) {
-                ESP_LOGE(TAG, "recvfrom failed");
+                ESP_LOGE(TAG, "recvfrom failed: errno=%d", errno);
             }
             break;
         }
@@ -108,6 +108,12 @@ esp_err_t dns_server_start(uint16_t port, const char *override_ip)
 
     int opt = 1;
     setsockopt(dns_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    
+    // Set receive timeout to allow graceful shutdown
+    struct timeval tv;
+    tv.tv_sec = 5;
+    tv.tv_usec = 0;
+    setsockopt(dns_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     struct sockaddr_in server_addr = {
         .sin_family = AF_INET,
