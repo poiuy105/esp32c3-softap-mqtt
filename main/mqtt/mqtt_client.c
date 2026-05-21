@@ -189,7 +189,9 @@ esp_err_t app_mqtt_disconnect(void)
 esp_err_t app_mqtt_subscribe(const char *topic, int qos)
 {
     if (mqtt_client && is_connected) {
-        int msg_id = esp_mqtt_client_subscribe(mqtt_client, topic, qos);
+        char topic_buf[128] = {0};
+        strncpy(topic_buf, topic, sizeof(topic_buf) - 1);
+        int msg_id = esp_mqtt_client_subscribe(mqtt_client, topic_buf, qos);
         ESP_LOGI(TAG, "Subscribed to topic '%s', msg_id=%d", topic, msg_id);
         return ESP_OK;
     }
@@ -199,7 +201,9 @@ esp_err_t app_mqtt_subscribe(const char *topic, int qos)
 esp_err_t app_mqtt_publish(const char *topic, const char *payload, int qos, int retain)
 {
     if (mqtt_client && is_connected) {
-        int msg_id = esp_mqtt_client_publish(mqtt_client, topic, payload, 0, qos, retain);
+        char topic_buf[128] = {0};
+        strncpy(topic_buf, topic, sizeof(topic_buf) - 1);
+        int msg_id = esp_mqtt_client_publish(mqtt_client, topic_buf, payload, 0, qos, retain);
         ESP_LOGI(TAG, "Published to topic '%s', msg_id=%d", topic, msg_id);
         return ESP_OK;
     }
