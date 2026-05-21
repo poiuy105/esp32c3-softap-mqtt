@@ -99,10 +99,13 @@ static void handle_state_connecting(app_event_t event)
             state_machine_transition(STATE_RUNNING);
             break;
         case EVENT_WIFI_DISCONNECTED:
-            state_machine_transition(STATE_ERROR);
+            // WiFi lost during MQTT connect - go back to reconnect WiFi
+            state_machine_transition(STATE_CONFIG);
             break;
         case EVENT_TIMEOUT:
-            state_machine_transition(STATE_ERROR);
+            // MQTT connection timed out - retry
+            ESP_LOGW(TAG, "MQTT connection timeout, retrying...");
+            // Stay in CONNECTING state, app_task will retry
             break;
         case EVENT_RESET_CONFIG:
             state_machine_transition(STATE_INIT);
@@ -118,8 +121,13 @@ static void handle_state_running(app_event_t event)
 {
     switch (event) {
         case EVENT_WIFI_DISCONNECTED:
+            // WiFi lost - go back to reconnect WiFi first
+            state_machine_transition(STATE_CONFIG);
+            break;
         case EVENT_MQTT_DISCONNECTED:
-            state_machine_transition(STATE_CONNECTING);
+            // MQTT disconnected but WiFi still up - ESP-MQTT handles auto-reconnect
+            // Don't change state, let the library reconnect
+            ESP_LOGI(TAG, "MQTT disconnected, auto-reconnect in progress...");
             break;
         case EVENT_RESET_CONFIG:
             state_machine_transition(STATE_INIT);
@@ -139,6 +147,10 @@ static void handle_state_error(app_event_t event)
             break;
         case EVENT_WIFI_CONNECTED:
             state_machine_transition(STATE_CONNECTING);
+            break;
+        case EVENT_TIMEOUT:
+            // Retry after timeout in error state
+            state_machine_transition(STATE_CONFIG);
             break;
         default:
             ESP_LOGW(TAG, "Unsupported event %s in ERROR state", 

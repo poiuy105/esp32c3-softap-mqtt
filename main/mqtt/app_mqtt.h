@@ -7,10 +7,8 @@
 
 // Connection statistics structure
 typedef struct {
-    uint32_t connect_attempts;
     uint32_t connect_successes;
     uint32_t disconnect_count;
-    uint32_t last_reconnect_delay_ms;
 } mqtt_conn_stats_t;
 
 esp_err_t app_mqtt_connect(const char *broker_uri, uint16_t port, 

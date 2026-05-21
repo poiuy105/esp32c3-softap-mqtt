@@ -11,7 +11,6 @@
 #include "nvs_config.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
-#include "freertos/task.h"
 
 static const char *TAG = "mqtt_client";
 
@@ -21,22 +20,10 @@ static bool is_connected = false;
 // Mutex for thread-safe access
 static SemaphoreHandle_t mqtt_mutex = NULL;
 
-// Reconnection task
-static TaskHandle_t reconnect_task_handle = NULL;
-static volatile bool reconnect_enabled = false;
-
-// Connection configuration (saved for reconnection)
-static char saved_broker_uri[128] = {0};
-static uint16_t saved_port = 0;
-static char saved_username[64] = {0};
-static char saved_password[64] = {0};
-
-// Reconnection statistics
+// Connection statistics
 static struct {
-    uint32_t connect_attempts;
     uint32_t connect_successes;
     uint32_t disconnect_count;
-    uint32_t last_reconnect_delay_ms;
 } conn_stats = {0};
 
 // Buffer for formatted URI
@@ -51,11 +38,6 @@ static char node_id[32] = {0};
 // Helper macros for mutex lock/unlock
 #define MQTT_LOCK()   do { if (mqtt_mutex) xSemaphoreTake(mqtt_mutex, portMAX_DELAY); } while(0)
 #define MQTT_UNLOCK() do { if (mqtt_mutex) xSemaphoreGive(mqtt_mutex); } while(0)
-
-// Reconnection configuration
-#define RECONNECT_MIN_DELAY_MS     1000    // 1 second
-#define RECONNECT_MAX_DELAY_MS     60000   // 60 seconds
-#define RECONNECT_BACKOFF_FACTOR   2       // Exponential backoff factor
 
 // Helper to save and publish state
 static void save_and_publish_state(void)
@@ -199,7 +181,6 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             MQTT_LOCK();
             is_connected = true;
             conn_stats.connect_successes++;
-            conn_stats.last_reconnect_delay_ms = RECONNECT_MIN_DELAY_MS;  // Reset backoff
             MQTT_UNLOCK();
             
             // Subscribe to command topics
@@ -239,13 +220,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             conn_stats.disconnect_count++;
             MQTT_UNLOCK();
             
-            // Trigger state machine event
-            state_machine_trigger_event(EVENT_MQTT_DISCONNECTED);
-            
-            // Notify reconnection task
-            if (reconnect_enabled && reconnect_task_handle) {
-                xTaskNotifyGive(reconnect_task_handle);
-            }
+            // ESP-MQTT has built-in auto-reconnect, no need to trigger state machine.
+            // Only notify state machine if this is a permanent failure (e.g. wrong credentials)
+            // For temporary disconnects, the library will reconnect automatically.
             break;
             
         case MQTT_EVENT_SUBSCRIBED:
@@ -273,99 +250,13 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     }
 }
 
-// Reconnection task with exponential backoff
-static void mqtt_reconnect_task(void *pvParameters)
-{
-    uint32_t delay_ms = RECONNECT_MIN_DELAY_MS;
-    
-    ESP_LOGI(TAG, "Reconnection task started");
-    
-    while (reconnect_enabled) {
-        // Wait for disconnect notification or timeout
-        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(delay_ms));
-        
-        if (!reconnect_enabled) {
-            break;
-        }
-        
-        // Check if already connected
-        if (app_mqtt_is_connected()) {
-            delay_ms = RECONNECT_MIN_DELAY_MS;  // Reset delay
-            continue;
-        }
-        
-        ESP_LOGI(TAG, "Attempting reconnection (delay: %lu ms, attempts: %lu)", 
-                 delay_ms, conn_stats.connect_attempts);
-        
-        // Attempt reconnection
-        conn_stats.connect_attempts++;
-        esp_err_t ret = app_mqtt_connect(saved_broker_uri, saved_port, 
-                                          saved_username[0] ? saved_username : NULL,
-                                          saved_password[0] ? saved_password : NULL);
-        
-        if (ret == ESP_OK) {
-            ESP_LOGI(TAG, "Reconnection initiated");
-        } else {
-            ESP_LOGE(TAG, "Reconnection failed: %s", esp_err_to_name(ret));
-        }
-        
-        // Exponential backoff
-        delay_ms *= RECONNECT_BACKOFF_FACTOR;
-        if (delay_ms > RECONNECT_MAX_DELAY_MS) {
-            delay_ms = RECONNECT_MAX_DELAY_MS;
-        }
-        conn_stats.last_reconnect_delay_ms = delay_ms;
-    }
-    
-    ESP_LOGI(TAG, "Reconnection task stopped");
-    reconnect_task_handle = NULL;
-    vTaskDelete(NULL);
-}
-
-// Start reconnection task
-static void start_reconnect_task(void)
-{
-    if (reconnect_task_handle == NULL) {
-        reconnect_enabled = true;
-        xTaskCreate(mqtt_reconnect_task, "mqtt_reconnect", 4096, NULL, 5, &reconnect_task_handle);
-        ESP_LOGI(TAG, "Reconnection task started");
-    }
-}
-
-// Stop reconnection task
-static void stop_reconnect_task(void)
-{
-    reconnect_enabled = false;
-    if (reconnect_task_handle) {
-        xTaskNotifyGive(reconnect_task_handle);
-        // Task will delete itself
-    }
-}
-
 esp_err_t app_mqtt_connect(const char *broker_uri, uint16_t port, 
                                 const char *username, const char *password)
 {
     ESP_LOGI(TAG, "Connecting to MQTT broker: %s (port: %d)", broker_uri, port);
     
-    // Save configuration for reconnection
-    strncpy(saved_broker_uri, broker_uri, sizeof(saved_broker_uri) - 1);
-    saved_port = port;
-    if (username) {
-        strncpy(saved_username, username, sizeof(saved_username) - 1);
-    } else {
-        saved_username[0] = '\0';
-    }
-    if (password) {
-        strncpy(saved_password, password, sizeof(saved_password) - 1);
-    } else {
-        saved_password[0] = '\0';
-    }
-    
     // Initialize LWT topic
     init_lwt_topic();
-    
-    // Start reconnection task
-    start_reconnect_task();
     
     // Format URI into static buffer for MQTT config
     const char *fmt_uri = format_mqtt_uri(broker_uri, port);
@@ -430,6 +321,11 @@ esp_err_t app_mqtt_connect(const char *broker_uri, uint16_t port,
                 .retain = true,
             }
         },
+        // Use ESP-MQTT built-in auto-reconnect with exponential backoff
+        .network = {
+            .reconnect_timeout_ms = 1000,     // Initial reconnect delay: 1s
+            .disable_auto_reconnect = false,  // Enable auto-reconnect
+        },
     };
     
     // Initialize mutex if not already done
@@ -454,9 +350,6 @@ esp_err_t app_mqtt_connect(const char *broker_uri, uint16_t port,
 
 esp_err_t app_mqtt_disconnect(void)
 {
-    // Stop reconnection task first
-    stop_reconnect_task();
-    
     MQTT_LOCK();
     if (mqtt_client) {
         esp_mqtt_client_stop(mqtt_client);
@@ -510,10 +403,8 @@ void app_mqtt_get_stats(mqtt_conn_stats_t *stats)
 {
     if (stats) {
         MQTT_LOCK();
-        stats->connect_attempts = conn_stats.connect_attempts;
         stats->connect_successes = conn_stats.connect_successes;
         stats->disconnect_count = conn_stats.disconnect_count;
-        stats->last_reconnect_delay_ms = conn_stats.last_reconnect_delay_ms;
         MQTT_UNLOCK();
     }
 }

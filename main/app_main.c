@@ -3,6 +3,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
+#include "freertos/timers.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_netif.h"
@@ -26,12 +27,19 @@
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
 
+// MQTT connection timeout (15 seconds)
+#define MQTT_CONNECT_TIMEOUT_MS  15000
+
 static EventGroupHandle_t wifi_event_group;
 
 static const char *TAG = "app_main";
 
 static app_config_t app_config;
-static bool restart_pending = false;
+static volatile bool restart_pending = false;
+
+// MQTT connection timeout timer
+static TimerHandle_t mqtt_timeout_timer = NULL;
+static volatile bool mqtt_timeout_fired = false;
 
 // Factory reset callback (called from button driver)
 static void factory_reset_handler(void)
@@ -41,6 +49,33 @@ static void factory_reset_handler(void)
     restart_pending = true;
 }
 
+// MQTT connection timeout callback
+static void mqtt_timeout_callback(TimerHandle_t timer)
+{
+    ESP_LOGW(TAG, "MQTT connection timeout!");
+    mqtt_timeout_fired = true;
+    state_machine_trigger_event(EVENT_TIMEOUT);
+}
+
+static void start_mqtt_timeout_timer(void)
+{
+    mqtt_timeout_fired = false;
+    if (mqtt_timeout_timer == NULL) {
+        mqtt_timeout_timer = xTimerCreate("mqtt_timeout", 
+                                           pdMS_TO_TICKS(MQTT_CONNECT_TIMEOUT_MS),
+                                           pdFALSE, NULL, mqtt_timeout_callback);
+    }
+    xTimerReset(mqtt_timeout_timer, 0);
+}
+
+static void stop_mqtt_timeout_timer(void)
+{
+    if (mqtt_timeout_timer) {
+        xTimerStop(mqtt_timeout_timer, 0);
+    }
+    mqtt_timeout_fired = false;
+}
+
 static void app_init_state_machine(void)
 {
     app_config.is_configured = nvs_is_config_valid(&app_config);
@@ -48,14 +83,10 @@ static void app_init_state_machine(void)
     ESP_LOGI(TAG, "State machine initialized, configured: %d, first_boot: %d",
              app_config.is_configured, app_config.first_boot);
 
-    // Check if already configured (not first boot and config is valid)
     if (app_config.is_configured && !app_config.first_boot) {
-        // Already configured, skip SOFTAP and go directly to CONFIG state
-        // This will trigger WiFi connection in app_task
-        ESP_LOGI(TAG, "Already configured, skipping SOFTAP, going to CONFIG state to connect WiFi");
+        ESP_LOGI(TAG, "Already configured, skipping SOFTAP");
         state_machine_trigger_event(EVENT_CONFIG_RECEIVED);
     } else {
-        // First boot or no config, go to SOFTAP for configuration
         state_machine_trigger_event(EVENT_INIT_COMPLETE);
     }
 }
@@ -63,18 +94,19 @@ static void app_init_state_machine(void)
 static void app_task(void *arg)
 {
     // Register task with watchdog
-    esp_err_t wdt_ret = esp_task_wdt_add(NULL);
-    if (wdt_ret == ESP_OK) {
-        ESP_LOGI(TAG, "Task watchdog registered");
-    } else {
-        ESP_LOGW(TAG, "Failed to register task watchdog: %s", esp_err_to_name(wdt_ret));
-    }
+    esp_task_wdt_add(NULL);
 
     app_state_t current_state = STATE_INIT;
 
     while (1) {
-        // Feed watchdog
         esp_task_wdt_reset();
+
+        // Check restart pending (factory reset)
+        if (restart_pending) {
+            ESP_LOGI(TAG, "Restarting system...");
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            esp_restart();
+        }
 
         app_state_t new_state = state_machine_get_current_state();
 
@@ -85,7 +117,6 @@ static void app_task(void *arg)
             switch (current_state) {
                 case STATE_INIT:
                     ESP_LOGI(TAG, "Initializing...");
-                    nvs_load_all_config(&app_config);
                     gpio_set_led_mode(LED_MODE_SLOW_BLINK);
                     state_machine_trigger_event(EVENT_INIT_COMPLETE);
                     break;
@@ -93,45 +124,42 @@ static void app_task(void *arg)
                 case STATE_SOFTAP:
                     ESP_LOGI(TAG, "Starting SoftAP mode");
                     gpio_set_led_mode(LED_MODE_SLOW_BLINK);
-                    // Generate SSID with MAC suffix for unique identification
                     char softap_ssid[32];
                     softap_generate_ssid_with_mac(softap_ssid, sizeof(softap_ssid));
-                    // Start SoftAP with empty password (open network)
                     event_handlers_set_auto_connect(false);
                     wifi_manager_start_softap(softap_ssid, "");
                     http_server_start();
                     dns_server_start(53, "192.168.4.1");
                     break;
 
-                case STATE_CONFIG:
-                    ESP_LOGI(TAG, "Config received, switching to STA mode");
+                case STATE_CONFIG: {
+                    ESP_LOGI(TAG, "Connecting to WiFi...");
                     gpio_set_led_mode(LED_MODE_ON);
                     dns_server_stop();
                     http_server_stop();
                     wifi_manager_stop_softap();
                     vTaskDelay(pdMS_TO_TICKS(1000));
 
-                    // Reload config after saving (to get updated values)
+                    // Reload config (only once, not in a loop)
                     nvs_load_all_config(&app_config);
-                    ESP_LOGI(TAG, "Reloaded config: SSID=%s, password_len=%d",
-                             app_config.wifi_ssid, strlen(app_config.wifi_password));
+                    ESP_LOGI(TAG, "Config: SSID=%s", app_config.wifi_ssid);
 
                     // Create event group for WiFi connection sync
                     wifi_event_group = xEventGroupCreate();
                     event_handlers_set_wifi_event_group(wifi_event_group);
 
-                    // Start WiFi STA connection with exponential backoff retry
+                    // Non-blocking WiFi connection with exponential backoff
                     bool wifi_connected = false;
                     int retry_count = 0;
-                    int retry_delay_ms = 5000;  // Start with 5 seconds
-                    const int max_retry_delay_ms = 60000;  // Max 60 seconds
+                    int retry_delay_ms = 5000;
+                    const int max_retry_delay_ms = 60000;
 
-                    while (!wifi_connected) {
+                    while (!wifi_connected && !restart_pending) {
+                        esp_task_wdt_reset();  // Feed watchdog during retry loop
+
                         if (retry_count > 0) {
                             ESP_LOGW(TAG, "WiFi retry %d (delay: %d ms)...", retry_count, retry_delay_ms);
                             vTaskDelay(pdMS_TO_TICKS(retry_delay_ms));
-                            
-                            // Exponential backoff
                             retry_delay_ms *= 2;
                             if (retry_delay_ms > max_retry_delay_ms) {
                                 retry_delay_ms = max_retry_delay_ms;
@@ -141,75 +169,77 @@ static void app_task(void *arg)
                         event_handlers_set_auto_connect(true);
                         wifi_manager_connect_sta(app_config.wifi_ssid, app_config.wifi_password);
 
-                        ESP_LOGI(TAG, "Waiting for WiFi connection (attempt %d)...", retry_count + 1);
+                        ESP_LOGI(TAG, "Waiting for WiFi (attempt %d)...", retry_count + 1);
                         EventBits_t bits = xEventGroupWaitBits(wifi_event_group,
                                                                WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-                                                               pdTRUE,  // Clear bits on exit
+                                                               pdTRUE,
                                                                pdFALSE,
-                                                               pdMS_TO_TICKS(20000));  // 20s timeout
+                                                               pdMS_TO_TICKS(20000));
 
                         if (bits & WIFI_CONNECTED_BIT) {
-                            ESP_LOGI(TAG, "WiFi connected successfully");
+                            ESP_LOGI(TAG, "WiFi connected");
                             wifi_connected = true;
                         } else {
-                            ESP_LOGW(TAG, "WiFi connection attempt %d failed", retry_count + 1);
+                            ESP_LOGW(TAG, "WiFi attempt %d failed", retry_count + 1);
                             wifi_manager_stop_sta();
                             vTaskDelay(pdMS_TO_TICKS(1000));
                         }
                         retry_count++;
                     }
 
-                    if (wifi_connected) {
-                        state_machine_trigger_event(EVENT_WIFI_CONNECTED);
-                    }
-
                     vEventGroupDelete(wifi_event_group);
                     wifi_event_group = NULL;
+
+                    if (wifi_connected) {
+                        state_machine_trigger_event(EVENT_WIFI_CONNECTED);
+                    } else if (!restart_pending) {
+                        // WiFi failed after all retries, go back to SOFTAP
+                        ESP_LOGW(TAG, "WiFi connection failed, returning to SOFTAP");
+                        state_machine_trigger_event(EVENT_TIMEOUT);
+                    }
                     break;
+                }
 
                 case STATE_CONNECTING:
                     ESP_LOGI(TAG, "Connecting to MQTT...");
                     gpio_set_led_mode(LED_MODE_FAST_BLINK);
                     app_mqtt_connect(app_config.mqtt_uri, app_config.mqtt_port,
                                       app_config.mqtt_username, app_config.mqtt_password);
+                    // Start timeout timer - if MQTT doesn't connect within timeout,
+                    // the timer will fire EVENT_TIMEOUT which keeps us in CONNECTING
+                    // (ESP-MQTT has its own reconnect, so this is just a safety net)
+                    start_mqtt_timeout_timer();
                     break;
 
                 case STATE_RUNNING: {
                     ESP_LOGI(TAG, "System running!");
                     gpio_set_led_mode(LED_MODE_OFF);
-                    // Publish initial states
+                    stop_mqtt_timeout_timer();
                     ha_discovery_publish_states();
 
                     // Periodic state reporting (every 30 seconds)
                     int report_count = 0;
-                    while (state_machine_get_current_state() == STATE_RUNNING) {
-                        esp_task_wdt_reset();  // Feed watchdog
+                    while (state_machine_get_current_state() == STATE_RUNNING && !restart_pending) {
+                        esp_task_wdt_reset();
                         vTaskDelay(pdMS_TO_TICKS(1000));
                         report_count++;
                         if (report_count >= 30) {
                             report_count = 0;
                             ha_discovery_publish_states();
-                            ESP_LOGI(TAG, "Periodic state published");
                         }
                     }
                     break;
                 }
 
                 case STATE_ERROR:
-                    ESP_LOGE(TAG, "System in error state, reverting to SoftAP mode");
-                    // Stop any active connections
-                    wifi_manager_stop_softap();
-                    vTaskDelay(pdMS_TO_TICKS(500));
-                    // Trigger reset config event to go back to INIT -> SOFTAP
-                    state_machine_trigger_event(EVENT_RESET_CONFIG);
+                    ESP_LOGE(TAG, "System in error state");
+                    gpio_set_led_mode(LED_MODE_WARN_BLINK);
+                    // Stop MQTT timeout timer
+                    stop_mqtt_timeout_timer();
+                    // Don't clear config! Wait for auto-recovery via TIMEOUT event
+                    // which transitions back to CONFIG to retry WiFi connection
                     break;
             }
-        }
-
-        if (restart_pending) {
-            ESP_LOGI(TAG, "Restarting system...");
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            esp_restart();
         }
 
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -223,7 +253,7 @@ void app_main(void)
 
     esp_err_t ret = nvs_init_config();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "NVS init failed, restaring");
+        ESP_LOGE(TAG, "NVS init failed, restarting");
         vTaskDelay(pdMS_TO_TICKS(2000));
         esp_restart();
     }
@@ -253,13 +283,13 @@ void app_main(void)
         return;
     }
     
-    // Load and restore device state (PWM only, LED controlled by state machine)
+    // Load and restore device state
     device_state_t device_state;
     nvs_load_device_state(&device_state);
     rmt_set_light(device_state.light_enabled, device_state.light_freq, device_state.light_duty);
     rmt_set_sound(device_state.sound_enabled, device_state.sound_freq, device_state.sound_duty);
 
-    // Initialize network stack with error handling
+    // Initialize network stack
     ret = esp_netif_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Netif init failed: %s", esp_err_to_name(ret));
