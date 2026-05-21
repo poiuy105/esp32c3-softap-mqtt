@@ -8,7 +8,7 @@
 #include "esp_netif.h"
 #include "cJSON.h"
 #include "gpio_control.h"
-#include "rmt_driver.h"
+#include "pwm_driver.h"
 
 static const char *TAG = "ha_discovery";
 
@@ -335,18 +335,18 @@ esp_err_t ha_discovery_publish_states(void)
     publish_state("led", gpio_get_led() ? "ON" : "OFF");
 
     // Light state
-    publish_state("light_power", rmt_get_light_enabled() ? "ON" : "OFF");
+    publish_state("light_power", pwm_get_light_enabled() ? "ON" : "OFF");
     char light_freq_str[16], light_duty_str[8];
-    snprintf(light_freq_str, sizeof(light_freq_str), "%lu", (unsigned long)rmt_get_light_freq());
-    snprintf(light_duty_str, sizeof(light_duty_str), "%d", rmt_get_light_duty());
+    snprintf(light_freq_str, sizeof(light_freq_str), "%lu", (unsigned long)pwm_get_light_freq());
+    snprintf(light_duty_str, sizeof(light_duty_str), "%d", pwm_get_light_duty());
     publish_state("light_freq", light_freq_str);
     publish_state("light_duty", light_duty_str);
 
     // Sound state
-    publish_state("sound_power", rmt_get_sound_enabled() ? "ON" : "OFF");
+    publish_state("sound_power", pwm_get_sound_enabled() ? "ON" : "OFF");
     char sound_freq_str[16], sound_vol_str[8];
-    snprintf(sound_freq_str, sizeof(sound_freq_str), "%lu", (unsigned long)rmt_get_sound_freq());
-    snprintf(sound_vol_str, sizeof(sound_vol_str), "%d", rmt_get_sound_duty());
+    snprintf(sound_freq_str, sizeof(sound_freq_str), "%lu", (unsigned long)pwm_get_sound_freq());
+    snprintf(sound_vol_str, sizeof(sound_vol_str), "%d", pwm_get_sound_duty());
     publish_state("sound_freq", sound_freq_str);
     publish_state("sound_vol", sound_vol_str);
 

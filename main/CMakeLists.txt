@@ -14,7 +14,7 @@ idf_component_register(
         "web/http_server.c"
         "web/api_handlers.c"
         "web/dns_server.c"
-        "drivers/rmt_driver.c"
+        "drivers/pwm_driver.c"
         "drivers/gpio_control.c"
         "drivers/button_driver.c"
         "utils/system_monitor.c"

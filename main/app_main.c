@@ -20,7 +20,7 @@
 #include "softap.h"
 #include "event_handlers.h"
 #include "dns_server.h"
-#include "rmt_driver.h"
+#include "pwm_driver.h"
 #include "gpio_control.h"
 #include "button_driver.h"
 #include "safe_mode.h"
@@ -277,18 +277,18 @@ void app_main(void)
         // Non-critical, continue
     }
     
-    ret = rmt_driver_init();
+    ret = pwm_driver_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "RMT driver init failed: %s", esp_err_to_name(ret));
-        safe_mode_enter(SAFE_MODE_ERR_DRIVER_INIT, "RMT driver init failed");
+        ESP_LOGE(TAG, "PWM driver init failed: %s", esp_err_to_name(ret));
+        safe_mode_enter(SAFE_MODE_ERR_DRIVER_INIT, "PWM driver init failed");
         return;
     }
     
     // Load and restore device state
     device_state_t device_state;
     nvs_load_device_state(&device_state);
-    rmt_set_light(device_state.light_enabled, device_state.light_freq, device_state.light_duty);
-    rmt_set_sound(device_state.sound_enabled, device_state.sound_freq, device_state.sound_duty);
+    pwm_set_light(device_state.light_enabled, device_state.light_freq, device_state.light_duty);
+    pwm_set_sound(device_state.sound_enabled, device_state.sound_freq, device_state.sound_duty);
 
     // Initialize network stack
     ret = esp_netif_init();
