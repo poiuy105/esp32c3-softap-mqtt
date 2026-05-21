@@ -2,6 +2,8 @@
 #define RMT_DRIVER_H
 
 #include "esp_err.h"
+#include <stdbool.h>
+#include <stdint.h>
 
 // RMT channel assignments
 #define RMT_CHAN_LIGHT  0   // 照明PWM - IO3
