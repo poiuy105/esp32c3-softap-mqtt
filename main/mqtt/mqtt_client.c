@@ -115,13 +115,21 @@ esp_err_t app_mqtt_connect(const char *broker_uri, uint16_t port,
     init_lwt_topic();
     
     esp_mqtt_client_config_t mqtt_cfg = {
-        .uri = formatted_broker_uri,
-        .username = username,
-        .password = password,
-        .lwt_topic = lwt_topic,
-        .lwt_msg = "offline",
-        .lwt_qos = 1,
-        .lwt_retain = true,
+        .broker = {
+            .address.uri = formatted_broker_uri,
+        },
+        .credentials = {
+            .username = username,
+            .authentication.password = password,
+        },
+        .session = {
+            .last_will = {
+                .topic = lwt_topic,
+                .msg = "offline",
+                .qos = 1,
+                .retain = true,
+            }
+        },
     };
     
     mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
