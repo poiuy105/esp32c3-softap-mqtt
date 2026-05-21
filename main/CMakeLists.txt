@@ -14,6 +14,7 @@ idf_component_register(
         "web/dns_server.c"
         "drivers/rmt_driver.c"
         "drivers/gpio_control.c"
+        "utils/system_monitor.c"
     INCLUDE_DIRS
         "."
         "core"
@@ -22,6 +23,7 @@ idf_component_register(
         "config"
         "web"
         "drivers"
+        "utils"
     REQUIRES
         esp_wifi
         esp_netif

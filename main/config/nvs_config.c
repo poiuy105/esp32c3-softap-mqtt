@@ -272,9 +272,34 @@ esp_err_t nvs_load_all_config(app_config_t *config)
 
 bool nvs_is_config_valid(app_config_t *config)
 {
-    if (strlen(config->wifi_ssid) == 0) return false;
-    if (strlen(config->mqtt_uri) == 0) return false;
-    if (config->mqtt_port == 0) return false;
+    if (config == NULL) return false;
+    
+    // WiFi SSID validation (1-32 characters)
+    size_t ssid_len = strlen(config->wifi_ssid);
+    if (ssid_len == 0 || ssid_len > 32) {
+        ESP_LOGW(TAG, "Invalid SSID length: %d", ssid_len);
+        return false;
+    }
+    
+    // MQTT URI validation
+    size_t uri_len = strlen(config->mqtt_uri);
+    if (uri_len == 0 || uri_len > 127) {
+        ESP_LOGW(TAG, "Invalid MQTT URI length: %d", uri_len);
+        return false;
+    }
+    
+    // Check MQTT URI format (must start with mqtt:// or mqtts://)
+    if (strncmp(config->mqtt_uri, "mqtt://", 7) != 0 && 
+        strncmp(config->mqtt_uri, "mqtts://", 8) != 0) {
+        ESP_LOGW(TAG, "Invalid MQTT URI format: %s", config->mqtt_uri);
+        return false;
+    }
+    
+    // Port validation (1-65535)
+    if (config->mqtt_port == 0 || config->mqtt_port > 65535) {
+        ESP_LOGW(TAG, "Invalid MQTT port: %d", config->mqtt_port);
+        return false;
+    }
     
     return true;
 }
