@@ -3,7 +3,7 @@
 #include "softap.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
-#include "esp_efuse.h"
+#include "esp_mac.h"
 #include "esp_netif.h"
 
 static const char *TAG = "softap";
@@ -11,7 +11,7 @@ static const char *TAG = "softap";
 esp_err_t softap_generate_ssid_with_mac(char *ssid_out, size_t ssid_size)
 {
     uint8_t mac[6];
-    esp_err_t ret = esp_efuse_mac_get_default(mac);
+    esp_err_t ret = esp_read_mac(mac, ESP_MAC_WIFI_STA);
     if (ret != ESP_OK) {
         // Fallback to WiFi MAC
         ret = esp_wifi_get_mac(WIFI_IF_AP, mac);

@@ -137,6 +137,12 @@ esp_err_t app_mqtt_connect(const char *broker_uri, uint16_t port,
     char *slash = strchr(hostname, '/');
     if (slash) *slash = '\0';
     
+    // Copy credentials to non-const buffers for v5.1 _Generic compatibility
+    char user_buf[64] = {0};
+    char pass_buf[64] = {0};
+    if (username) strncpy(user_buf, username, sizeof(user_buf) - 1);
+    if (password) strncpy(pass_buf, password, sizeof(pass_buf) - 1);
+    
     ESP_LOGI(TAG, "MQTT hostname: %s, port: %d", hostname, mqtt_port);
     
     esp_mqtt_client_config_t mqtt_cfg = {
@@ -145,8 +151,8 @@ esp_err_t app_mqtt_connect(const char *broker_uri, uint16_t port,
             .address.port = mqtt_port,
         },
         .credentials = {
-            .username = username,
-            .authentication.password = password,
+            .username = user_buf,
+            .authentication.password = pass_buf,
         },
         .session = {
             .last_will = {
