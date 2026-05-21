@@ -1,6 +1,7 @@
 #include "device_info.h"
 #include "esp_log.h"
 #include "esp_mac.h"
+#include <stdbool.h>
 
 static const char *TAG = "device_info";
 
