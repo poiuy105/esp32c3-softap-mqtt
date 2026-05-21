@@ -20,6 +20,7 @@
 #include "dns_server.h"
 #include "rmt_driver.h"
 #include "gpio_control.h"
+#include "safe_mode.h"
 
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
@@ -216,9 +217,28 @@ void app_main(void)
              app_config.wifi_ssid, app_config.mqtt_uri, app_config.mqtt_port);
 
     // Initialize drivers
-    gpio_control_init();
-    button_init(factory_reset_handler);
-    rmt_driver_init();
+    // Initialize drivers with error handling
+    esp_err_t ret;
+    
+    ret = gpio_control_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "GPIO control init failed: %s", esp_err_to_name(ret));
+        safe_mode_enter(SAFE_MODE_ERR_DRIVER_INIT, "GPIO control init failed");
+        return;
+    }
+    
+    ret = button_init(factory_reset_handler);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Button init failed: %s", esp_err_to_name(ret));
+        // Non-critical, continue
+    }
+    
+    ret = rmt_driver_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "RMT driver init failed: %s", esp_err_to_name(ret));
+        safe_mode_enter(SAFE_MODE_ERR_DRIVER_INIT, "RMT driver init failed");
+        return;
+    }
     
     // Load and restore device state (PWM only, LED controlled by state machine)
     device_state_t device_state;
@@ -226,8 +246,20 @@ void app_main(void)
     rmt_set_light(device_state.light_enabled, device_state.light_freq, device_state.light_duty);
     rmt_set_sound(device_state.sound_enabled, device_state.sound_freq, device_state.sound_duty);
 
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    // Initialize network stack with error handling
+    ret = esp_netif_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Netif init failed: %s", esp_err_to_name(ret));
+        safe_mode_enter(SAFE_MODE_ERR_NETIF_INIT, "Network interface init failed");
+        return;
+    }
+    
+    ret = esp_event_loop_create_default();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Event loop init failed: %s", esp_err_to_name(ret));
+        safe_mode_enter(SAFE_MODE_ERR_EVENT_LOOP, "Event loop init failed");
+        return;
+    }
 
     app_init_state_machine();
     wifi_manager_init();

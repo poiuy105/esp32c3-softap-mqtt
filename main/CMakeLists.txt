@@ -3,6 +3,7 @@ idf_component_register(
         "app_main.c"
         "core/state_machine.c"
         "core/event_handlers.c"
+        "core/safe_mode.c"
         "wifi/wifi_manager.c"
         "wifi/softap.c"
         "mqtt/mqtt_client.c"

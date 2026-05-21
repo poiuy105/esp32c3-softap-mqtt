@@ -45,15 +45,36 @@ esp_err_t wifi_manager_connect_sta(const char *ssid, const char *password)
     }
     
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    esp_err_t ret = esp_wifi_init(&cfg);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
     
     wifi_config_t wifi_cfg = {0};
     strncpy((char *)wifi_cfg.sta.ssid, ssid, sizeof(wifi_cfg.sta.ssid) - 1);
     strncpy((char *)wifi_cfg.sta.password, password, sizeof(wifi_cfg.sta.password) - 1);
     
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
-    ESP_ERROR_CHECK(esp_wifi_start());
+    ret = esp_wifi_set_mode(WIFI_MODE_STA);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi set mode failed: %s", esp_err_to_name(ret));
+        esp_wifi_deinit();
+        return ret;
+    }
+    
+    ret = esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi set config failed: %s", esp_err_to_name(ret));
+        esp_wifi_deinit();
+        return ret;
+    }
+    
+    ret = esp_wifi_start();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi start failed: %s", esp_err_to_name(ret));
+        esp_wifi_deinit();
+        return ret;
+    }
     
     strncpy(current_config.ssid, ssid, sizeof(current_config.ssid) - 1);
     strncpy(current_config.password, password, sizeof(current_config.password) - 1);
@@ -113,7 +134,11 @@ esp_err_t wifi_manager_start_softap(const char *ssid, const char *password)
     }
     
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    esp_err_t ret = esp_wifi_init(&cfg);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
     
     wifi_config_t wifi_cfg = {0};
     strncpy((char *)wifi_cfg.ap.ssid, ssid, sizeof(wifi_cfg.ap.ssid) - 1);
@@ -131,9 +156,26 @@ esp_err_t wifi_manager_start_softap(const char *ssid, const char *password)
         wifi_cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
     }
     
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_cfg));
-    ESP_ERROR_CHECK(esp_wifi_start());
+    ret = esp_wifi_set_mode(WIFI_MODE_AP);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi set mode failed: %s", esp_err_to_name(ret));
+        esp_wifi_deinit();
+        return ret;
+    }
+    
+    ret = esp_wifi_set_config(WIFI_IF_AP, &wifi_cfg);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi set config failed: %s", esp_err_to_name(ret));
+        esp_wifi_deinit();
+        return ret;
+    }
+    
+    ret = esp_wifi_start();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi start failed: %s", esp_err_to_name(ret));
+        esp_wifi_deinit();
+        return ret;
+    }
     
     ESP_LOGI(TAG, "SoftAP started successfully");
     ESP_LOGI(TAG, "SoftAP IP: 192.168.4.1");
