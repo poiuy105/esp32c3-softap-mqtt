@@ -31,6 +31,14 @@ static const char *TAG = "app_main";
 static app_config_t app_config;
 static bool restart_pending = false;
 
+// Factory reset callback (called from button driver)
+static void factory_reset_handler(void)
+{
+    ESP_LOGW(TAG, "Executing factory reset - clearing network config only");
+    nvs_reset_network_config();
+    restart_pending = true;
+}
+
 static void app_init_state_machine(void)
 {
     app_config.is_configured = nvs_is_config_valid(&app_config);
@@ -65,11 +73,13 @@ static void app_task(void *arg)
                 case STATE_INIT:
                     ESP_LOGI(TAG, "Initializing...");
                     nvs_load_all_config(&app_config);
+                    gpio_set_led_mode(LED_MODE_SLOW_BLINK);
                     state_machine_trigger_event(EVENT_INIT_COMPLETE);
                     break;
 
                 case STATE_SOFTAP:
                     ESP_LOGI(TAG, "Starting SoftAP mode");
+                    gpio_set_led_mode(LED_MODE_SLOW_BLINK);
                     // Generate SSID with MAC suffix for unique identification
                     char softap_ssid[32];
                     softap_generate_ssid_with_mac(softap_ssid, sizeof(softap_ssid));
@@ -82,6 +92,7 @@ static void app_task(void *arg)
 
                 case STATE_CONFIG:
                     ESP_LOGI(TAG, "Config received, switching to STA mode");
+                    gpio_set_led_mode(LED_MODE_ON);
                     dns_server_stop();
                     http_server_stop();
                     wifi_manager_stop_softap();
@@ -142,12 +153,14 @@ static void app_task(void *arg)
 
                 case STATE_CONNECTING:
                     ESP_LOGI(TAG, "Connecting to MQTT...");
+                    gpio_set_led_mode(LED_MODE_FAST_BLINK);
                     app_mqtt_connect(app_config.mqtt_uri, app_config.mqtt_port,
                                       app_config.mqtt_username, app_config.mqtt_password);
                     break;
 
                 case STATE_RUNNING: {
                     ESP_LOGI(TAG, "System running!");
+                    gpio_set_led_mode(LED_MODE_OFF);
                     // Publish initial states
                     ha_discovery_publish_states();
 
@@ -204,12 +217,12 @@ void app_main(void)
 
     // Initialize drivers
     gpio_control_init();
+    button_init(factory_reset_handler);
     rmt_driver_init();
     
-    // Load and restore device state
+    // Load and restore device state (PWM only, LED controlled by state machine)
     device_state_t device_state;
     nvs_load_device_state(&device_state);
-    gpio_set_led(device_state.led_state);
     rmt_set_light(device_state.light_enabled, device_state.light_freq, device_state.light_duty);
     rmt_set_sound(device_state.sound_enabled, device_state.sound_freq, device_state.sound_duty);
 

@@ -7,27 +7,51 @@
 // LED GPIO (active low)
 #define GPIO_LED    4
 
+// Button GPIO (active low, pulled high)
+#define GPIO_BTN    9
+
+// LED blink modes
+typedef enum {
+    LED_MODE_OFF = 0,       // LED off
+    LED_MODE_ON,            // LED solid on
+    LED_MODE_SLOW_BLINK,    // 1s on / 1s off (waiting for config)
+    LED_MODE_FAST_BLINK,    // 200ms on / 200ms off (connecting)
+    LED_MODE_WARN_BLINK,    // 100ms on / 100ms off (factory reset warning)
+} led_mode_t;
+
 /**
- * @brief Initialize GPIO control for LED
+ * @brief Initialize GPIO control for LED and button
  * 
  * @return esp_err_t ESP_OK on success
  */
 esp_err_t gpio_control_init(void);
 
 /**
- * @brief Set LED state
- * 
- * @param on true = LED on (GPIO low), false = LED off (GPIO high)
- * @return esp_err_t ESP_OK on success
+ * @brief Set LED on/off (manual control, overrides blink mode)
  */
 esp_err_t gpio_set_led(bool on);
 
 /**
  * @brief Get current LED state
- * 
- * @return true LED is on
- * @return false LED is off
  */
 bool gpio_get_led(void);
+
+/**
+ * @brief Set LED blink mode (starts a timer task)
+ */
+esp_err_t gpio_set_led_mode(led_mode_t mode);
+
+/**
+ * @brief Get current LED mode
+ */
+led_mode_t gpio_get_led_mode(void);
+
+/**
+ * @brief Initialize button with long-press detection
+ *        Long press >= 3s: LED warning blink
+ *        Long press >= 5s: factory reset (calls callback)
+ */
+typedef void (*button_factory_reset_callback_t)(void);
+esp_err_t button_init(button_factory_reset_callback_t callback);
 
 #endif // GPIO_CONTROL_H

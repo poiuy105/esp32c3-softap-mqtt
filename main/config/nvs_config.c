@@ -179,6 +179,28 @@ esp_err_t nvs_reset_config(void)
     return err;
 }
 
+esp_err_t nvs_reset_network_config(void)
+{
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) return err;
+    
+    // Only erase network-related keys, preserve device control state
+    nvs_erase_key(handle, NVS_KEY_WIFI_SSID);
+    nvs_erase_key(handle, NVS_KEY_WIFI_PASSWORD);
+    nvs_erase_key(handle, NVS_KEY_MQTT_URI);
+    nvs_erase_key(handle, NVS_KEY_MQTT_PORT);
+    nvs_erase_key(handle, NVS_KEY_MQTT_USER);
+    nvs_erase_key(handle, NVS_KEY_MQTT_PASS);
+    nvs_erase_key(handle, NVS_KEY_FIRST_BOOT);
+    
+    err = nvs_commit(handle);
+    nvs_close(handle);
+    
+    ESP_LOGI(TAG, "Network config reset successfully (device state preserved)");
+    return err;
+}
+
 esp_err_t nvs_set_first_boot(bool first_boot)
 {
     nvs_handle_t handle;
