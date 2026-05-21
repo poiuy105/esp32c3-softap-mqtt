@@ -171,6 +171,10 @@ static const char INDEX_HTML[] =
 "document.getElementById('status').style.display = 'none';"
 "}"
 "loadConfig();"
+"// Auto scan WiFi when page loads"
+"window.addEventListener('load', () => {"
+"    setTimeout(scanWiFi, 500);"
+"});"
 "</script>"
 "</body>"
 "</html>";

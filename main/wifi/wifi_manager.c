@@ -170,6 +170,25 @@ esp_err_t wifi_manager_scan_wifi(wifi_scan_results_t *results)
     // Initialize results
     memset(results, 0, sizeof(wifi_scan_results_t));
     
+    // Get current WiFi mode
+    wifi_mode_t current_mode;
+    esp_err_t ret = esp_wifi_get_mode(&current_mode);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get WiFi mode: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    // If in AP mode only, temporarily switch to AP+STA mode for scanning
+    bool need_switch_mode = (current_mode == WIFI_MODE_AP);
+    if (need_switch_mode) {
+        ESP_LOGI(TAG, "Switching to AP+STA mode for scanning");
+        ret = esp_wifi_set_mode(WIFI_MODE_APSTA);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to set AP+STA mode: %s", esp_err_to_name(ret));
+            return ret;
+        }
+    }
+    
     // Configure scan parameters
     wifi_scan_config_t scan_config = {
         .ssid = NULL,
@@ -186,9 +205,13 @@ esp_err_t wifi_manager_scan_wifi(wifi_scan_results_t *results)
     };
     
     // Start scan
-    esp_err_t ret = esp_wifi_scan_start(&scan_config, true);
+    ret = esp_wifi_scan_start(&scan_config, true);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to start WiFi scan: %s", esp_err_to_name(ret));
+        // Restore original mode if needed
+        if (need_switch_mode) {
+            esp_wifi_set_mode(WIFI_MODE_AP);
+        }
         return ret;
     }
     
@@ -240,6 +263,12 @@ esp_err_t wifi_manager_scan_wifi(wifi_scan_results_t *results)
     }
     
     free(ap_records);
+    
+    // Restore original mode if needed
+    if (need_switch_mode) {
+        ESP_LOGI(TAG, "Restoring AP-only mode");
+        esp_wifi_set_mode(WIFI_MODE_AP);
+    }
     
     ESP_LOGI(TAG, "WiFi scan completed, found %d APs", results->count);
     return ESP_OK;
