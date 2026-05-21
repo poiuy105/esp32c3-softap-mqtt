@@ -267,8 +267,8 @@ esp_err_t ha_discovery_publish_configs(void)
     // Light frequency number (0-150kHz)
     publish_number_config("light_freq", "照明频率", "light/freq", 0, 150000, 100, "Hz");
 
-    // Light duty number (0-100%)
-    publish_number_config("light_duty", "照明亮度", "light/duty", 0, 100, 1, "%");
+    // Light duty number (0-100.0%, step=0.1, values transmitted as x10: 0-1000)
+    publish_number_config("light_duty", "照明亮度", "light/duty", 0, 100, 0.1, "%");
 
     // Sound control switch
     publish_switch_config("sound_power", "声波控制", "sound/power");
@@ -276,8 +276,8 @@ esp_err_t ha_discovery_publish_configs(void)
     // Sound frequency number (0-150kHz)
     publish_number_config("sound_freq", "声波频率", "sound/freq", 0, 150000, 100, "Hz");
 
-    // Sound volume number (50-100%)
-    publish_number_config("sound_vol", "声波音量", "sound/vol", 50, 100, 1, "%");
+    // Sound volume number (50.0-100.0%, step=0.1, values transmitted as x10: 500-1000)
+    publish_number_config("sound_vol", "声波音量", "sound/vol", 50, 100, 0.1, "%");
 
     ESP_LOGI(TAG, "HA discovery configs published");
     return ESP_OK;
@@ -338,7 +338,8 @@ esp_err_t ha_discovery_publish_states(void)
     publish_state("light_power", pwm_get_light_enabled() ? "ON" : "OFF");
     char light_freq_str[16], light_duty_str[8];
     snprintf(light_freq_str, sizeof(light_freq_str), "%lu", (unsigned long)pwm_get_light_freq());
-    snprintf(light_duty_str, sizeof(light_duty_str), "%d", pwm_get_light_duty());
+    // Publish duty as x10 value (e.g. "453" = 45.3%), HA parses with step=0.1
+    snprintf(light_duty_str, sizeof(light_duty_str), "%u", pwm_get_light_duty_x10());
     publish_state("light_freq", light_freq_str);
     publish_state("light_duty", light_duty_str);
 
@@ -346,7 +347,8 @@ esp_err_t ha_discovery_publish_states(void)
     publish_state("sound_power", pwm_get_sound_enabled() ? "ON" : "OFF");
     char sound_freq_str[16], sound_vol_str[8];
     snprintf(sound_freq_str, sizeof(sound_freq_str), "%lu", (unsigned long)pwm_get_sound_freq());
-    snprintf(sound_vol_str, sizeof(sound_vol_str), "%d", pwm_get_sound_duty());
+    // Publish volume as x10 value (e.g. "750" = 75.0%), HA parses with step=0.1
+    snprintf(sound_vol_str, sizeof(sound_vol_str), "%u", pwm_get_sound_duty_x10());
     publish_state("sound_freq", sound_freq_str);
     publish_state("sound_vol", sound_vol_str);
 
