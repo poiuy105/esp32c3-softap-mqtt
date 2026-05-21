@@ -6,6 +6,9 @@
 #include "esp_event.h"
 #include "esp_mac.h"
 #include "mqtt_client.h"
+#include "gpio_control.h"
+#include "rmt_driver.h"
+#include "nvs_config.h"
 
 static const char *TAG = "mqtt_client";
 
@@ -17,6 +20,105 @@ static char formatted_uri[256];
 
 // LWT topic buffer
 static char lwt_topic[64] = {0};
+
+// Node ID for topic prefix
+static char node_id[32] = {0};
+
+// Helper to save and publish state
+static void save_and_publish_state(void)
+{
+    device_state_t state = {
+        .led_state = gpio_get_led(),
+        .light_enabled = rmt_get_light_enabled(),
+        .light_freq = rmt_get_light_freq(),
+        .light_duty = rmt_get_light_duty(),
+        .sound_enabled = rmt_get_sound_enabled(),
+        .sound_freq = rmt_get_sound_freq(),
+        .sound_duty = rmt_get_sound_duty(),
+    };
+    nvs_save_device_state(&state);
+    ha_discovery_publish_states();
+}
+
+// Handle incoming MQTT commands
+static void handle_mqtt_command(const char *topic, int topic_len, const char *data, int data_len)
+{
+    // Make null-terminated strings
+    char topic_buf[128] = {0};
+    char data_buf[64] = {0};
+    strncpy(topic_buf, topic, topic_len < 127 ? topic_len : 127);
+    strncpy(data_buf, data, data_len < 63 ? data_len : 63);
+    
+    ESP_LOGI(TAG, "Command: topic=%s, data=%s", topic_buf, data_buf);
+    
+    // Check which command topic
+    char expected_topic[64];
+    
+    // LED control
+    snprintf(expected_topic, sizeof(expected_topic), "%s/led/set", node_id);
+    if (strcmp(topic_buf, expected_topic) == 0) {
+        bool on = (strcmp(data_buf, "ON") == 0);
+        gpio_set_led(on);
+        save_and_publish_state();
+        return;
+    }
+    
+    // Light power
+    snprintf(expected_topic, sizeof(expected_topic), "%s/light/power/set", node_id);
+    if (strcmp(topic_buf, expected_topic) == 0) {
+        bool on = (strcmp(data_buf, "ON") == 0);
+        rmt_set_light(on, rmt_get_light_freq(), rmt_get_light_duty());
+        save_and_publish_state();
+        return;
+    }
+    
+    // Light frequency
+    snprintf(expected_topic, sizeof(expected_topic), "%s/light/freq/set", node_id);
+    if (strcmp(topic_buf, expected_topic) == 0) {
+        uint32_t freq = (uint32_t)atoi(data_buf);
+        rmt_set_light(rmt_get_light_enabled(), freq, rmt_get_light_duty());
+        save_and_publish_state();
+        return;
+    }
+    
+    // Light duty
+    snprintf(expected_topic, sizeof(expected_topic), "%s/light/duty/set", node_id);
+    if (strcmp(topic_buf, expected_topic) == 0) {
+        uint8_t duty = (uint8_t)atoi(data_buf);
+        rmt_set_light(rmt_get_light_enabled(), rmt_get_light_freq(), duty);
+        save_and_publish_state();
+        return;
+    }
+    
+    // Sound power
+    snprintf(expected_topic, sizeof(expected_topic), "%s/sound/power/set", node_id);
+    if (strcmp(topic_buf, expected_topic) == 0) {
+        bool on = (strcmp(data_buf, "ON") == 0);
+        rmt_set_sound(on, rmt_get_sound_freq(), rmt_get_sound_duty());
+        save_and_publish_state();
+        return;
+    }
+    
+    // Sound frequency
+    snprintf(expected_topic, sizeof(expected_topic), "%s/sound/freq/set", node_id);
+    if (strcmp(topic_buf, expected_topic) == 0) {
+        uint32_t freq = (uint32_t)atoi(data_buf);
+        rmt_set_sound(rmt_get_sound_enabled(), freq, rmt_get_sound_duty());
+        save_and_publish_state();
+        return;
+    }
+    
+    // Sound volume
+    snprintf(expected_topic, sizeof(expected_topic), "%s/sound/vol/set", node_id);
+    if (strcmp(topic_buf, expected_topic) == 0) {
+        uint8_t vol = (uint8_t)atoi(data_buf);
+        rmt_set_sound(rmt_get_sound_enabled(), rmt_get_sound_freq(), vol);
+        save_and_publish_state();
+        return;
+    }
+    
+    ESP_LOGW(TAG, "Unknown command topic: %s", topic_buf);
+}
 
 // Helper function to format MQTT URI
 static const char* format_mqtt_uri(const char *uri, uint16_t port)
@@ -49,7 +151,9 @@ static void init_lwt_topic(void)
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
     snprintf(lwt_topic, sizeof(lwt_topic), "esp32c3_%02x%02x%02x%02x/status",
              mac[2], mac[3], mac[4], mac[5]);
-    ESP_LOGI(TAG, "LWT topic: %s", lwt_topic);
+    snprintf(node_id, sizeof(node_id), "esp32c3_%02x%02x%02x%02x",
+             mac[2], mac[3], mac[4], mac[5]);
+    ESP_LOGI(TAG, "LWT topic: %s, Node ID: %s", lwt_topic, node_id);
 }
 
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
@@ -60,6 +164,23 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT connected");
             is_connected = true;
+            
+            // Subscribe to command topics
+            char cmd_topic[64];
+            snprintf(cmd_topic, sizeof(cmd_topic), "%s/led/set", node_id);
+            esp_mqtt_client_subscribe(mqtt_client, cmd_topic, 1);
+            snprintf(cmd_topic, sizeof(cmd_topic), "%s/light/power/set", node_id);
+            esp_mqtt_client_subscribe(mqtt_client, cmd_topic, 1);
+            snprintf(cmd_topic, sizeof(cmd_topic), "%s/light/freq/set", node_id);
+            esp_mqtt_client_subscribe(mqtt_client, cmd_topic, 1);
+            snprintf(cmd_topic, sizeof(cmd_topic), "%s/light/duty/set", node_id);
+            esp_mqtt_client_subscribe(mqtt_client, cmd_topic, 1);
+            snprintf(cmd_topic, sizeof(cmd_topic), "%s/sound/power/set", node_id);
+            esp_mqtt_client_subscribe(mqtt_client, cmd_topic, 1);
+            snprintf(cmd_topic, sizeof(cmd_topic), "%s/sound/freq/set", node_id);
+            esp_mqtt_client_subscribe(mqtt_client, cmd_topic, 1);
+            snprintf(cmd_topic, sizeof(cmd_topic), "%s/sound/vol/set", node_id);
+            esp_mqtt_client_subscribe(mqtt_client, cmd_topic, 1);
             
             // Publish online status
             ha_discovery_publish_online();
@@ -97,6 +218,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         case MQTT_EVENT_DATA:
             ESP_LOGI(TAG, "MQTT data received on topic: %.*s", 
                      event->topic_len, event->topic);
+            // Handle command
+            handle_mqtt_command(event->topic, event->topic_len, 
+                               event->data, event->data_len);
             break;
             
         default:

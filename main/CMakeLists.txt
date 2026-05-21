@@ -11,6 +11,8 @@ idf_component_register(
         "web/http_server.c"
         "web/api_handlers.c"
         "web/dns_server.c"
+        "drivers/rmt_driver.c"
+        "drivers/gpio_control.c"
     INCLUDE_DIRS
         "."
         "core"
@@ -18,6 +20,7 @@ idf_component_register(
         "mqtt"
         "config"
         "web"
+        "drivers"
     REQUIRES
         esp_wifi
         esp_netif
@@ -25,4 +28,5 @@ idf_component_register(
         mqtt
         esp_http_server
         json
+        driver
 )

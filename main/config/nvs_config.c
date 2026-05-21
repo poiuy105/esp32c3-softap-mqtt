@@ -252,3 +252,69 @@ bool nvs_is_config_valid(app_config_t *config)
     
     return true;
 }
+
+esp_err_t nvs_save_device_state(const device_state_t *state)
+{
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS for device state: %s", esp_err_to_name(err));
+        return err;
+    }
+    
+    nvs_set_u8(handle, NVS_KEY_LED_STATE, state->led_state ? 1 : 0);
+    nvs_set_u8(handle, NVS_KEY_LIGHT_ENABLE, state->light_enabled ? 1 : 0);
+    nvs_set_u32(handle, NVS_KEY_LIGHT_FREQ, state->light_freq);
+    nvs_set_u8(handle, NVS_KEY_LIGHT_DUTY, state->light_duty);
+    nvs_set_u8(handle, NVS_KEY_SOUND_ENABLE, state->sound_enabled ? 1 : 0);
+    nvs_set_u32(handle, NVS_KEY_SOUND_FREQ, state->sound_freq);
+    nvs_set_u8(handle, NVS_KEY_SOUND_DUTY, state->sound_duty);
+    
+    err = nvs_commit(handle);
+    nvs_close(handle);
+    
+    ESP_LOGI(TAG, "Device state saved: LED=%d, Light=%d/%lu/%d, Sound=%d/%lu/%d",
+             state->led_state, state->light_enabled, state->light_freq, state->light_duty,
+             state->sound_enabled, state->sound_freq, state->sound_duty);
+    
+    return err;
+}
+
+esp_err_t nvs_load_device_state(device_state_t *state)
+{
+    memset(state, 0, sizeof(device_state_t));
+    
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "No device state found, using defaults");
+        // Set defaults
+        state->led_state = false;
+        state->light_enabled = false;
+        state->light_freq = 1000;  // 1kHz default
+        state->light_duty = 50;    // 50% default
+        state->sound_enabled = false;
+        state->sound_freq = 40000; // 40kHz default
+        state->sound_duty = 75;    // 75% default
+        return ESP_OK;
+    }
+    
+    uint8_t val8;
+    uint32_t val32;
+    
+    if (nvs_get_u8(handle, NVS_KEY_LED_STATE, &val8) == ESP_OK) state->led_state = (val8 != 0);
+    if (nvs_get_u8(handle, NVS_KEY_LIGHT_ENABLE, &val8) == ESP_OK) state->light_enabled = (val8 != 0);
+    if (nvs_get_u32(handle, NVS_KEY_LIGHT_FREQ, &val32) == ESP_OK) state->light_freq = val32;
+    if (nvs_get_u8(handle, NVS_KEY_LIGHT_DUTY, &val8) == ESP_OK) state->light_duty = val8;
+    if (nvs_get_u8(handle, NVS_KEY_SOUND_ENABLE, &val8) == ESP_OK) state->sound_enabled = (val8 != 0);
+    if (nvs_get_u32(handle, NVS_KEY_SOUND_FREQ, &val32) == ESP_OK) state->sound_freq = val32;
+    if (nvs_get_u8(handle, NVS_KEY_SOUND_DUTY, &val8) == ESP_OK) state->sound_duty = val8;
+    
+    nvs_close(handle);
+    
+    ESP_LOGI(TAG, "Device state loaded: LED=%d, Light=%d/%lu/%d, Sound=%d/%lu/%d",
+             state->led_state, state->light_enabled, state->light_freq, state->light_duty,
+             state->sound_enabled, state->sound_freq, state->sound_duty);
+    
+    return ESP_OK;
+}

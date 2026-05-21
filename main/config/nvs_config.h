@@ -13,6 +13,15 @@
 #define NVS_KEY_MQTT_PASS "mqtt_pass"
 #define NVS_KEY_FIRST_BOOT "first_boot"
 
+// Device control keys
+#define NVS_KEY_LED_STATE      "led_state"
+#define NVS_KEY_LIGHT_ENABLE   "light_en"
+#define NVS_KEY_LIGHT_FREQ     "light_freq"
+#define NVS_KEY_LIGHT_DUTY     "light_duty"
+#define NVS_KEY_SOUND_ENABLE   "sound_en"
+#define NVS_KEY_SOUND_FREQ     "sound_freq"
+#define NVS_KEY_SOUND_DUTY     "sound_duty"
+
 typedef struct {
     bool is_configured;
     char wifi_ssid[32];
@@ -24,6 +33,17 @@ typedef struct {
     bool first_boot;
 } app_config_t;
 
+// Device control state
+typedef struct {
+    bool led_state;
+    bool light_enabled;
+    uint32_t light_freq;
+    uint8_t light_duty;
+    bool sound_enabled;
+    uint32_t sound_freq;
+    uint8_t sound_duty;
+} device_state_t;
+
 esp_err_t nvs_init_config(void);
 esp_err_t nvs_save_wifi_config(const char *ssid, const char *password);
 esp_err_t nvs_read_wifi_config(char *ssid, size_t ssid_size, char *password, size_t pass_size);
@@ -34,5 +54,9 @@ esp_err_t nvs_set_first_boot(bool first_boot);
 bool nvs_get_first_boot(void);
 esp_err_t nvs_load_all_config(app_config_t *config);
 bool nvs_is_config_valid(app_config_t *config);
+
+// Device state storage
+esp_err_t nvs_save_device_state(const device_state_t *state);
+esp_err_t nvs_load_device_state(device_state_t *state);
 
 #endif

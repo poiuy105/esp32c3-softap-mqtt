@@ -18,6 +18,8 @@
 #include "softap.h"
 #include "event_handlers.h"
 #include "dns_server.h"
+#include "rmt_driver.h"
+#include "gpio_control.h"
 
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
@@ -199,6 +201,17 @@ void app_main(void)
     nvs_load_all_config(&app_config);
     ESP_LOGI(TAG, "Config loaded: SSID=%s, MQTT=%s:%d",
              app_config.wifi_ssid, app_config.mqtt_uri, app_config.mqtt_port);
+
+    // Initialize drivers
+    gpio_control_init();
+    rmt_driver_init();
+    
+    // Load and restore device state
+    device_state_t device_state;
+    nvs_load_device_state(&device_state);
+    gpio_set_led(device_state.led_state);
+    rmt_set_light(device_state.light_enabled, device_state.light_freq, device_state.light_duty);
+    rmt_set_sound(device_state.sound_enabled, device_state.sound_freq, device_state.sound_duty);
 
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());

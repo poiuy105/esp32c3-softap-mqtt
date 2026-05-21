@@ -7,6 +7,9 @@
 #include "esp_mac.h"
 #include "esp_netif.h"
 #include "cJSON.h"
+#include "nvs_config.h"
+#include "gpio_control.h"
+#include "rmt_driver.h"
 
 static const char *TAG = "ha_discovery";
 
@@ -105,6 +108,98 @@ static esp_err_t publish_sensor_config(const char *object_id, const char *name,
     return err;
 }
 
+// Publish a switch discovery config
+static esp_err_t publish_switch_config(const char *object_id, const char *name,
+                                        const char *cmd_topic_suffix)
+{
+    char topic[128];
+    snprintf(topic, sizeof(topic), "homeassistant/switch/%s/%s/config", node_id, object_id);
+
+    char state_topic[96];
+    snprintf(state_topic, sizeof(state_topic), "%s/%s/state", node_id, object_id);
+
+    char cmd_topic[96];
+    snprintf(cmd_topic, sizeof(cmd_topic), "%s/%s/set", node_id, cmd_topic_suffix);
+
+    char unique_id[64];
+    snprintf(unique_id, sizeof(unique_id), "%s_%s", node_id, object_id);
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "name", name);
+    cJSON_AddStringToObject(root, "state_topic", state_topic);
+    cJSON_AddStringToObject(root, "command_topic", cmd_topic);
+    cJSON_AddStringToObject(root, "unique_id", unique_id);
+    cJSON_AddStringToObject(root, "availability_topic", avail_topic);
+    cJSON_AddStringToObject(root, "payload_available", "online");
+    cJSON_AddStringToObject(root, "payload_not_available", "offline");
+    cJSON_AddStringToObject(root, "payload_on", "ON");
+    cJSON_AddStringToObject(root, "payload_off", "OFF");
+    cJSON_AddStringToObject(root, "state_on", "ON");
+    cJSON_AddStringToObject(root, "state_off", "OFF");
+
+    cJSON_AddItemToObject(root, "device", build_device_info());
+
+    char *json_str = cJSON_Print(root);
+    cJSON_Delete(root);
+
+    if (json_str == NULL) {
+        ESP_LOGE(TAG, "Failed to build JSON for switch %s", object_id);
+        return ESP_FAIL;
+    }
+
+    esp_err_t err = app_mqtt_publish(topic, json_str, 1, 1);  // QoS 1, retain
+    free(json_str);
+    return err;
+}
+
+// Publish a number discovery config
+static esp_err_t publish_number_config(const char *object_id, const char *name,
+                                        const char *cmd_topic_suffix,
+                                        double min_val, double max_val, double step,
+                                        const char *unit)
+{
+    char topic[128];
+    snprintf(topic, sizeof(topic), "homeassistant/number/%s/%s/config", node_id, object_id);
+
+    char state_topic[96];
+    snprintf(state_topic, sizeof(state_topic), "%s/%s/state", node_id, object_id);
+
+    char cmd_topic[96];
+    snprintf(cmd_topic, sizeof(cmd_topic), "%s/%s/set", node_id, cmd_topic_suffix);
+
+    char unique_id[64];
+    snprintf(unique_id, sizeof(unique_id), "%s_%s", node_id, object_id);
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "name", name);
+    cJSON_AddStringToObject(root, "state_topic", state_topic);
+    cJSON_AddStringToObject(root, "command_topic", cmd_topic);
+    cJSON_AddStringToObject(root, "unique_id", unique_id);
+    cJSON_AddStringToObject(root, "availability_topic", avail_topic);
+    cJSON_AddStringToObject(root, "payload_available", "online");
+    cJSON_AddStringToObject(root, "payload_not_available", "offline");
+    cJSON_AddNumberToObject(root, "min", min_val);
+    cJSON_AddNumberToObject(root, "max", max_val);
+    cJSON_AddNumberToObject(root, "step", step);
+    if (unit && strlen(unit) > 0) {
+        cJSON_AddStringToObject(root, "unit_of_measurement", unit);
+    }
+
+    cJSON_AddItemToObject(root, "device", build_device_info());
+
+    char *json_str = cJSON_Print(root);
+    cJSON_Delete(root);
+
+    if (json_str == NULL) {
+        ESP_LOGE(TAG, "Failed to build JSON for number %s", object_id);
+        return ESP_FAIL;
+    }
+
+    esp_err_t err = app_mqtt_publish(topic, json_str, 1, 1);  // QoS 1, retain
+    free(json_str);
+    return err;
+}
+
 // Publish a binary_sensor discovery config
 static esp_err_t publish_binary_sensor_config(const char *object_id, const char *name,
                                                const char *device_class)
@@ -176,6 +271,27 @@ esp_err_t ha_discovery_publish_configs(void)
     // MQTT status binary sensor
     publish_binary_sensor_config("mqtt_status", "MQTT 状态", "connectivity");
 
+    // LED switch
+    publish_switch_config("led", "LED指示灯", "led");
+
+    // Light control switch
+    publish_switch_config("light_power", "照明控制", "light/power");
+
+    // Light frequency number (0-150kHz)
+    publish_number_config("light_freq", "照明频率", "light/freq", 0, 150000, 100, "Hz");
+
+    // Light duty number (0-100%)
+    publish_number_config("light_duty", "照明亮度", "light/duty", 0, 100, 1, "%");
+
+    // Sound control switch
+    publish_switch_config("sound_power", "声波控制", "sound/power");
+
+    // Sound frequency number (0-150kHz)
+    publish_number_config("sound_freq", "声波频率", "sound/freq", 0, 150000, 100, "Hz");
+
+    // Sound volume number (50-100%)
+    publish_number_config("sound_vol", "声波音量", "sound/vol", 50, 100, 1, "%");
+
     ESP_LOGI(TAG, "HA discovery configs published");
     return ESP_OK;
 }
@@ -226,6 +342,25 @@ esp_err_t ha_discovery_publish_states(void)
 
     // MQTT status
     publish_state("mqtt_status", app_mqtt_is_connected() ? "ON" : "OFF");
+
+    // LED state
+    publish_state("led", gpio_get_led() ? "ON" : "OFF");
+
+    // Light state
+    publish_state("light_power", rmt_get_light_enabled() ? "ON" : "OFF");
+    char light_freq_str[16], light_duty_str[8];
+    snprintf(light_freq_str, sizeof(light_freq_str), "%lu", (unsigned long)rmt_get_light_freq());
+    snprintf(light_duty_str, sizeof(light_duty_str), "%d", rmt_get_light_duty());
+    publish_state("light_freq", light_freq_str);
+    publish_state("light_duty", light_duty_str);
+
+    // Sound state
+    publish_state("sound_power", rmt_get_sound_enabled() ? "ON" : "OFF");
+    char sound_freq_str[16], sound_vol_str[8];
+    snprintf(sound_freq_str, sizeof(sound_freq_str), "%lu", (unsigned long)rmt_get_sound_freq());
+    snprintf(sound_vol_str, sizeof(sound_vol_str), "%d", rmt_get_sound_duty());
+    publish_state("sound_freq", sound_freq_str);
+    publish_state("sound_vol", sound_vol_str);
 
     return ESP_OK;
 }
