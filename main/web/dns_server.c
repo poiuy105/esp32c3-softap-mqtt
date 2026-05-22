@@ -36,7 +36,7 @@ static void dns_server_task(void *pvParameters)
                           (struct sockaddr *)&client_addr, &addr_len);
         if (len < 0) {
             if (dns_socket >= 0) {
-                ESP_LOGE(TAG, "recvfrom failed: errno=%d", errno);
+                ESP_LOGW(TAG, "recvfrom failed: errno=%d", errno);
             }
             break;
         }
@@ -128,7 +128,7 @@ esp_err_t dns_server_start(uint16_t port, const char *override_ip)
         return ESP_FAIL;
     }
 
-    if (xTaskCreate(dns_server_task, "dns_server", 2048, NULL, 5, &dns_task_handle) != pdPASS) {
+    if (xTaskCreate(dns_server_task, "dns_server", 4096, NULL, 5, &dns_task_handle) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create task");
         close(dns_socket);
         dns_socket = -1;
