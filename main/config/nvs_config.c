@@ -356,11 +356,11 @@ esp_err_t nvs_load_device_state(device_state_t *state)
         // Set defaults
         state->led_state = false;
         state->light_enabled = false;
-        state->light_freq = 1000;  // 1kHz default
-        state->light_duty = 50;    // 50% default
+        state->light_freq = 1000;       // 1kHz default
+        state->light_duty = 80000;      // 80.0% default (x1000)
         state->sound_enabled = false;
-        state->sound_freq = 40000; // 40kHz default
-        state->sound_duty = 75;    // 75% default
+        state->sound_freq = 20000;      // 20kHz default
+        state->sound_duty = 75000;      // 75.0% default (x1000)
         return ESP_OK;
     }
     
@@ -370,16 +370,16 @@ esp_err_t nvs_load_device_state(device_state_t *state)
     if (nvs_get_u8(handle, NVS_KEY_LED_STATE, &val8) == ESP_OK) state->led_state = (val8 != 0);
     if (nvs_get_u8(handle, NVS_KEY_LIGHT_ENABLE, &val8) == ESP_OK) state->light_enabled = (val8 != 0);
     if (nvs_get_u32(handle, NVS_KEY_LIGHT_FREQ, &val32) == ESP_OK) state->light_freq = val32;
-    if (nvs_get_u8(handle, NVS_KEY_LIGHT_DUTY, &val8) == ESP_OK) state->light_duty = val8;
+    if (nvs_get_u32(handle, NVS_KEY_LIGHT_DUTY, &val32) == ESP_OK) state->light_duty = val32;
     if (nvs_get_u8(handle, NVS_KEY_SOUND_ENABLE, &val8) == ESP_OK) state->sound_enabled = (val8 != 0);
     if (nvs_get_u32(handle, NVS_KEY_SOUND_FREQ, &val32) == ESP_OK) state->sound_freq = val32;
-    if (nvs_get_u8(handle, NVS_KEY_SOUND_DUTY, &val8) == ESP_OK) state->sound_duty = val8;
+    if (nvs_get_u32(handle, NVS_KEY_SOUND_DUTY, &val32) == ESP_OK) state->sound_duty = val32;
     
     nvs_close(handle);
     
-    ESP_LOGI(TAG, "Device state loaded: LED=%d, Light=%d/%lu/%d, Sound=%d/%lu/%d",
-             state->led_state, state->light_enabled, state->light_freq, state->light_duty,
-             state->sound_enabled, state->sound_freq, state->sound_duty);
+    ESP_LOGI(TAG, "Device state loaded: LED=%d, Light=%d/%lu/%lu, Sound=%d/%lu/%lu",
+             state->led_state, state->light_enabled, (unsigned long)state->light_freq, (unsigned long)state->light_duty,
+             state->sound_enabled, (unsigned long)state->sound_freq, (unsigned long)state->sound_duty);
     
     return ESP_OK;
 }

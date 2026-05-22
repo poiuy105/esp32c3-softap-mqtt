@@ -66,8 +66,8 @@ static esp_err_t configure_timer(ledc_timer_t timer_num, uint32_t freq_hz)
         sound_resolution = resolution;
     }
     
-    ESP_LOGD(TAG, "Timer %d: freq=%luHz, resolution=%d-bit",
-              timer_num, freq_hz, resolution);
+    ESP_LOGD(TAG, "Timer %d: freq=%luHz, resolution=%lu-bit",
+              timer_num, freq_hz, (unsigned long)resolution);
     
     ledc_timer_config_t timer_cfg = {
         .speed_mode = LEDC_SPEED_MODE,
@@ -106,8 +106,8 @@ static uint32_t set_and_quantize(ledc_channel_t channel, uint32_t duty_x1000, ui
     // Clamp result
     if (actual_x1000 > 100000) actual_x1000 = 100000;
     
-    ESP_LOGD(TAG, "duty_x1000=%lu -> ledc_duty=%lu/%u -> actual_x1000=%lu (res=%d-bit)",
-             duty_x1000, ledc_duty, max_duty, actual_x1000, resolution);
+    ESP_LOGD(TAG, "duty_x1000=%lu -> ledc_duty=%lu/%lu -> actual_x1000=%lu (res=%lu-bit)",
+             duty_x1000, ledc_duty, (unsigned long)max_duty, actual_x1000, (unsigned long)resolution);
     
     return actual_x1000;
 }
