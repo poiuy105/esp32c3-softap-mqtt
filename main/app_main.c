@@ -316,8 +316,13 @@ void app_main(void)
     // Load and restore device state
     device_state_t device_state;
     nvs_load_device_state(&device_state);
-    pwm_set_light(device_state.light_enabled, device_state.light_freq, device_state.light_duty);
-    pwm_set_sound(device_state.sound_enabled, device_state.sound_freq, device_state.sound_duty);
+    
+    // First set frequency and duty (without enable), then set enable separately
+    // This preserves duty value even if device was disabled
+    pwm_set_light(false, device_state.light_freq, device_state.light_duty);
+    pwm_set_sound(false, device_state.sound_freq, device_state.sound_duty);
+    pwm_set_light_enable(device_state.light_enabled);
+    pwm_set_sound_enable(device_state.sound_enabled);
 
     // Initialize network stack
     ret = esp_netif_init();

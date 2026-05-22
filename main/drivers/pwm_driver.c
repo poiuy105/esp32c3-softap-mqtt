@@ -201,9 +201,10 @@ esp_err_t pwm_set_light(bool enable, uint32_t freq_hz, uint32_t duty_x1000)
         // Set duty and quantize back to actual value
         state.light_duty_x1000 = set_and_quantize(LEDC_CHANNEL_LIGHT, duty_x1000, light_resolution);
     } else {
+        // Stop output but preserve duty value for next enable
         ledc_set_duty(LEDC_SPEED_MODE, LEDC_CHANNEL_LIGHT, 0);
         ledc_update_duty(LEDC_SPEED_MODE, LEDC_CHANNEL_LIGHT);
-        state.light_duty_x1000 = 0;
+        // Note: state.light_duty_x1000 is NOT cleared, preserved for next enable
     }
     
     PWM_UNLOCK();
@@ -240,9 +241,10 @@ esp_err_t pwm_set_sound(bool enable, uint32_t freq_hz, uint32_t duty_x1000)
         
         state.sound_duty_x1000 = set_and_quantize(LEDC_CHANNEL_SOUND, duty_x1000, sound_resolution);
     } else {
+        // Stop output but preserve duty value for next enable
         ledc_set_duty(LEDC_SPEED_MODE, LEDC_CHANNEL_SOUND, 0);
         ledc_update_duty(LEDC_SPEED_MODE, LEDC_CHANNEL_SOUND);
-        state.sound_duty_x1000 = 0;
+        // Note: state.sound_duty_x1000 is NOT cleared, preserved for next enable
     }
     
     PWM_UNLOCK();
