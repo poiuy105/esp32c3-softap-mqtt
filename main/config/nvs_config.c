@@ -338,9 +338,9 @@ esp_err_t nvs_save_device_state(const device_state_t *state)
     err = nvs_commit(handle);
     nvs_close(handle);
     
-    ESP_LOGI(TAG, "Device state saved: LED=%d, Light=%d/%lu/%d, Sound=%d/%lu/%d",
-             state->led_state, state->light_enabled, state->light_freq, state->light_duty,
-             state->sound_enabled, state->sound_freq, state->sound_duty);
+    ESP_LOGI(TAG, "Device state saved: LED=%d, Light=%d/%lu/%lu, Sound=%d/%lu/%lu",
+             state->led_state, state->light_enabled, (unsigned long)state->light_freq, (unsigned long)state->light_duty,
+             state->sound_enabled, (unsigned long)state->sound_freq, (unsigned long)state->sound_duty);
     
     return err;
 }
