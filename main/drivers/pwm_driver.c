@@ -190,6 +190,10 @@ esp_err_t pwm_set_light(bool enable, uint32_t freq_hz, uint32_t duty_x1000)
     
     esp_err_t ret = ESP_OK;
     
+    // Always update state (frequency and duty are independent of enable state)
+    state.light_freq = freq_hz;
+    state.light_duty_x1000 = duty_x1000;
+    
     if (enable && freq_hz > 0 && duty_x1000 > 0) {
         // Reconfigure timer for new frequency
         ret = configure_timer(LEDC_TIMER_LIGHT, freq_hz);
@@ -204,7 +208,7 @@ esp_err_t pwm_set_light(bool enable, uint32_t freq_hz, uint32_t duty_x1000)
         // Stop output but preserve duty value for next enable
         ledc_set_duty(LEDC_SPEED_MODE, LEDC_CHANNEL_LIGHT, 0);
         ledc_update_duty(LEDC_SPEED_MODE, LEDC_CHANNEL_LIGHT);
-        // Note: state.light_duty_x1000 is NOT cleared, preserved for next enable
+        // Note: state.light_duty_x1000 is already updated above
     }
     
     PWM_UNLOCK();
@@ -224,8 +228,11 @@ esp_err_t pwm_set_sound(bool enable, uint32_t freq_hz, uint32_t duty_x1000)
     if (duty_x1000 > DUTY_X1000_SOUND_MAX) duty_x1000 = DUTY_X1000_SOUND_MAX;
     
     PWM_LOCK();
+    
+    // Always update state (frequency and duty are independent of enable state)
     state.sound_enabled = enable;
     state.sound_freq = freq_hz;
+    state.sound_duty_x1000 = duty_x1000;
     
     // Control sound enable GPIO
     gpio_set_level(GPIO_SOUND_EN, enable ? 1 : 0);
@@ -244,7 +251,7 @@ esp_err_t pwm_set_sound(bool enable, uint32_t freq_hz, uint32_t duty_x1000)
         // Stop output but preserve duty value for next enable
         ledc_set_duty(LEDC_SPEED_MODE, LEDC_CHANNEL_SOUND, 0);
         ledc_update_duty(LEDC_SPEED_MODE, LEDC_CHANNEL_SOUND);
-        // Note: state.sound_duty_x1000 is NOT cleared, preserved for next enable
+        // Note: state.sound_duty_x1000 is already updated above
     }
     
     PWM_UNLOCK();
