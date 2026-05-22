@@ -338,24 +338,20 @@ esp_err_t ha_discovery_publish_states(void)
     publish_state("led", gpio_get_led() ? "ON" : "OFF");
 
     // Light state
-    publish_state("light_power", pwm_get_light_enabled() ? "ON" : "OFF");
+    publish_state("light_power", pwmGetLightEnable() ? "ON" : "OFF");
     char light_freq_str[16];
-    snprintf(light_freq_str, sizeof(light_freq_str), "%lu", (unsigned long)pwm_get_light_freq());
-    // Publish duty as percentage (e.g. "80.5", HA will display with step=0.1)
+    snprintf(light_freq_str, sizeof(light_freq_str), "%lu", (unsigned long)pwmGetLightFreq());
     char light_duty_str[16];
-    uint32_t duty_x1000 = pwm_get_light_duty_x1000();
-    snprintf(light_duty_str, sizeof(light_duty_str), "%.1f", duty_x1000 / 1000.0);
+    snprintf(light_duty_str, sizeof(light_duty_str), "%.1f", pwmGetLightDuty() / 1000.0);
     publish_state("light_freq", light_freq_str);
     publish_state("light_duty", light_duty_str);
 
     // Sound state
-    publish_state("sound_power", pwm_get_sound_enabled() ? "ON" : "OFF");
+    publish_state("sound_power", pwmGetSoundEnable() ? "ON" : "OFF");
     char sound_freq_str[16];
-    snprintf(sound_freq_str, sizeof(sound_freq_str), "%lu", (unsigned long)pwm_get_sound_freq());
-    // Publish volume as percentage (e.g. "55.5", HA will display with step=0.1)
+    snprintf(sound_freq_str, sizeof(sound_freq_str), "%lu", (unsigned long)pwmGetSoundFreq());
     char sound_vol_str[16];
-    uint32_t vol_x1000 = pwm_get_sound_duty_x1000();
-    snprintf(sound_vol_str, sizeof(sound_vol_str), "%.1f", vol_x1000 / 1000.0);
+    snprintf(sound_vol_str, sizeof(sound_vol_str), "%.1f", pwmGetSoundDuty() / 1000.0);
     publish_state("sound_freq", sound_freq_str);
     publish_state("sound_vol", sound_vol_str);
 

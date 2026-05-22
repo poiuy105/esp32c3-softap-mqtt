@@ -9,21 +9,19 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 
 static const char *TAG = "mqtt_cmd";
 
-// Helper to save and publish state
 static void save_and_publish_state(void)
 {
     device_state_t state = {
         .led_state = gpio_get_led(),
-        .light_enabled = pwm_get_light_enabled(),
-        .light_freq = pwm_get_light_freq(),
-        .light_duty = pwm_get_light_duty_x1000(),
-        .sound_enabled = pwm_get_sound_enabled(),
-        .sound_freq = pwm_get_sound_freq(),
-        .sound_duty = pwm_get_sound_duty_x1000(),
+        .light_enabled = pwmGetLightEnable(),
+        .light_freq = pwmGetLightFreq(),
+        .light_duty = pwmGetLightDuty(),
+        .sound_enabled = pwmGetSoundEnable(),
+        .sound_freq = pwmGetSoundFreq(),
+        .sound_duty = pwmGetSoundDuty(),
     };
     nvs_save_device_state(&state);
     ha_discovery_publish_states();
@@ -71,7 +69,7 @@ void mqtt_command_handle(const char *topic, int topic_len,
     const char *node_id = device_info_get_node_id();
     char expected_topic[64];
     
-    // LED control
+    // LED control (independent, not part of PWM entities)
     snprintf(expected_topic, sizeof(expected_topic), "%s/led/set", node_id);
     if (strcmp(topic_buf, expected_topic) == 0) {
         bool on = (strcmp(data_buf, "ON") == 0);
@@ -80,58 +78,64 @@ void mqtt_command_handle(const char *topic, int topic_len,
         return;
     }
     
-    // Light power - only change enable state, preserve freq and duty
+    // Light power - only change enable, preserve freq and duty
     snprintf(expected_topic, sizeof(expected_topic), "%s/light/power/set", node_id);
     if (strcmp(topic_buf, expected_topic) == 0) {
         bool on = (strcmp(data_buf, "ON") == 0);
-        pwm_set_light_enable(on);  // Use new API that preserves settings
+        pwmSetLightEnable(on);
+        pwmApplyLight();
         save_and_publish_state();
         return;
     }
     
-    // Light frequency
+    // Light frequency - only change freq, preserve enable and duty
     snprintf(expected_topic, sizeof(expected_topic), "%s/light/freq/set", node_id);
     if (strcmp(topic_buf, expected_topic) == 0) {
         uint32_t freq = (uint32_t)atoi(data_buf);
-        pwm_set_light(pwm_get_light_enabled(), freq, pwm_get_light_duty_x1000());
+        pwmSetLightFreq(freq);
+        pwmApplyLight();
         save_and_publish_state();
         return;
     }
     
-    // Light duty (e.g. "80.5" -> 80500 x1000)
+    // Light duty - only change duty, preserve enable and freq
     snprintf(expected_topic, sizeof(expected_topic), "%s/light/duty/set", node_id);
     if (strcmp(topic_buf, expected_topic) == 0) {
         double duty_percent = atof(data_buf);
-        uint32_t duty_x1000 = (uint32_t)(duty_percent * 1000.0 + 0.5);  // Round
-        pwm_set_light(pwm_get_light_enabled(), pwm_get_light_freq(), duty_x1000);
+        uint32_t duty_x1000 = (uint32_t)(duty_percent * 1000.0 + 0.5);
+        pwmSetLightDuty(duty_x1000);
+        pwmApplyLight();
         save_and_publish_state();
         return;
     }
     
-    // Sound power - only change enable state, preserve freq and duty
+    // Sound power - only change enable, preserve freq and duty
     snprintf(expected_topic, sizeof(expected_topic), "%s/sound/power/set", node_id);
     if (strcmp(topic_buf, expected_topic) == 0) {
         bool on = (strcmp(data_buf, "ON") == 0);
-        pwm_set_sound_enable(on);  // Use new API that preserves settings
+        pwmSetSoundEnable(on);
+        pwmApplySound();
         save_and_publish_state();
         return;
     }
     
-    // Sound frequency
+    // Sound frequency - only change freq, preserve enable and duty
     snprintf(expected_topic, sizeof(expected_topic), "%s/sound/freq/set", node_id);
     if (strcmp(topic_buf, expected_topic) == 0) {
         uint32_t freq = (uint32_t)atoi(data_buf);
-        pwm_set_sound(pwm_get_sound_enabled(), freq, pwm_get_sound_duty_x1000());
+        pwmSetSoundFreq(freq);
+        pwmApplySound();
         save_and_publish_state();
         return;
     }
     
-    // Sound volume (e.g. "55.5" -> 55500 x1000)
+    // Sound volume - only change duty, preserve enable and freq
     snprintf(expected_topic, sizeof(expected_topic), "%s/sound/vol/set", node_id);
     if (strcmp(topic_buf, expected_topic) == 0) {
         double vol_percent = atof(data_buf);
-        uint32_t vol_x1000 = (uint32_t)(vol_percent * 1000.0 + 0.5);  // Round
-        pwm_set_sound(pwm_get_sound_enabled(), pwm_get_sound_freq(), vol_x1000);
+        uint32_t vol_x1000 = (uint32_t)(vol_percent * 1000.0 + 0.5);
+        pwmSetSoundDuty(vol_x1000);
+        pwmApplySound();
         save_and_publish_state();
         return;
     }

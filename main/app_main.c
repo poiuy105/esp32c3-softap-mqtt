@@ -306,23 +306,27 @@ void app_main(void)
         // Non-critical, continue
     }
     
-    ret = pwm_driver_init();
+    ret = pwmDriverInit();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "PWM driver init failed: %s", esp_err_to_name(ret));
         safe_mode_enter(SAFE_MODE_ERR_DRIVER_INIT, "PWM driver init failed");
         return;
     }
     
-    // Load and restore device state
+    // Load and restore device state using independent entity architecture
     device_state_t device_state;
     nvs_load_device_state(&device_state);
     
-    // First set frequency and duty (without enable), then set enable separately
-    // This preserves duty value even if device was disabled
-    pwm_set_light(false, device_state.light_freq, device_state.light_duty);
-    pwm_set_sound(false, device_state.sound_freq, device_state.sound_duty);
-    pwm_set_light_enable(device_state.light_enabled);
-    pwm_set_sound_enable(device_state.sound_enabled);
+    // Stage all parameters first, then apply per entity
+    pwmSetLightEnable(device_state.light_enabled);
+    pwmSetLightFreq(device_state.light_freq);
+    pwmSetLightDuty(device_state.light_duty);
+    pwmApplyLight();
+    
+    pwmSetSoundEnable(device_state.sound_enabled);
+    pwmSetSoundFreq(device_state.sound_freq);
+    pwmSetSoundDuty(device_state.sound_duty);
+    pwmApplySound();
 
     // Initialize network stack
     ret = esp_netif_init();
