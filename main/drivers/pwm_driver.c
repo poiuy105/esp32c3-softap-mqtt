@@ -249,6 +249,71 @@ esp_err_t pwm_set_sound(bool enable, uint32_t freq_hz, uint32_t duty_x1000)
     return ret;
 }
 
+esp_err_t pwm_set_light_enable(bool enable)
+{
+    ESP_LOGI(TAG, "Light enable: %d (preserve freq=%luHz, duty=%lu.%lu%%)",
+             enable, state.light_freq,
+             state.light_duty_x1000 / 1000, (state.light_duty_x1000 % 1000) / 100);
+    
+    PWM_LOCK();
+    state.light_enabled = enable;
+    
+    esp_err_t ret = ESP_OK;
+    
+    if (enable && state.light_freq > 0 && state.light_duty_x1000 > 0) {
+        // Reconfigure timer for current frequency
+        ret = configure_timer(LEDC_TIMER_LIGHT, state.light_freq);
+        if (ret != ESP_OK) {
+            PWM_UNLOCK();
+            return ret;
+        }
+        
+        // Restore duty
+        state.light_duty_x1000 = set_and_quantize(LEDC_CHANNEL_LIGHT, state.light_duty_x1000, light_resolution);
+    } else {
+        ledc_set_duty(LEDC_SPEED_MODE, LEDC_CHANNEL_LIGHT, 0);
+        ledc_update_duty(LEDC_SPEED_MODE, LEDC_CHANNEL_LIGHT);
+        // Note: duty is NOT cleared, preserved for next enable
+    }
+    
+    PWM_UNLOCK();
+    return ret;
+}
+
+esp_err_t pwm_set_sound_enable(bool enable)
+{
+    ESP_LOGI(TAG, "Sound enable: %d (preserve freq=%luHz, duty=%lu.%lu%%)",
+             enable, state.sound_freq,
+             state.sound_duty_x1000 / 1000, (state.sound_duty_x1000 % 1000) / 100);
+    
+    PWM_LOCK();
+    state.sound_enabled = enable;
+    
+    // Control sound enable GPIO
+    gpio_set_level(GPIO_SOUND_EN, enable ? 1 : 0);
+    
+    esp_err_t ret = ESP_OK;
+    
+    if (enable && state.sound_freq > 0 && state.sound_duty_x1000 > 0) {
+        // Reconfigure timer for current frequency
+        ret = configure_timer(LEDC_TIMER_SOUND, state.sound_freq);
+        if (ret != ESP_OK) {
+            PWM_UNLOCK();
+            return ret;
+        }
+        
+        // Restore duty
+        state.sound_duty_x1000 = set_and_quantize(LEDC_CHANNEL_SOUND, state.sound_duty_x1000, sound_resolution);
+    } else {
+        ledc_set_duty(LEDC_SPEED_MODE, LEDC_CHANNEL_SOUND, 0);
+        ledc_update_duty(LEDC_SPEED_MODE, LEDC_CHANNEL_SOUND);
+        // Note: duty is NOT cleared, preserved for next enable
+    }
+    
+    PWM_UNLOCK();
+    return ret;
+}
+
 // Getters - thread-safe
 bool pwm_get_light_enabled(void) {
     PWM_LOCK();

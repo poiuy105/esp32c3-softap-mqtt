@@ -330,10 +330,10 @@ esp_err_t nvs_save_device_state(const device_state_t *state)
     nvs_set_u8(handle, NVS_KEY_LED_STATE, state->led_state ? 1 : 0);
     nvs_set_u8(handle, NVS_KEY_LIGHT_ENABLE, state->light_enabled ? 1 : 0);
     nvs_set_u32(handle, NVS_KEY_LIGHT_FREQ, state->light_freq);
-    nvs_set_u8(handle, NVS_KEY_LIGHT_DUTY, state->light_duty);
+    nvs_set_u32(handle, NVS_KEY_LIGHT_DUTY, state->light_duty);
     nvs_set_u8(handle, NVS_KEY_SOUND_ENABLE, state->sound_enabled ? 1 : 0);
     nvs_set_u32(handle, NVS_KEY_SOUND_FREQ, state->sound_freq);
-    nvs_set_u8(handle, NVS_KEY_SOUND_DUTY, state->sound_duty);
+    nvs_set_u32(handle, NVS_KEY_SOUND_DUTY, state->sound_duty);
     
     err = nvs_commit(handle);
     nvs_close(handle);

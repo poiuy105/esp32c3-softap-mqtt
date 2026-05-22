@@ -45,6 +45,20 @@ esp_err_t pwm_set_light(bool enable, uint32_t freq_hz, uint32_t duty_x1000);
 esp_err_t pwm_set_sound(bool enable, uint32_t freq_hz, uint32_t duty_x1000);
 
 /**
+ * @brief Set only light enable state (preserve freq and duty)
+ * @param enable Enable/disable PWM output
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t pwm_set_light_enable(bool enable);
+
+/**
+ * @brief Set only sound enable state (preserve freq and duty)
+ * @param enable Enable/disable PWM output
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t pwm_set_sound_enable(bool enable);
+
+/**
  * @brief Get current light state
  */
 bool pwm_get_light_enabled(void);

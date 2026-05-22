@@ -80,11 +80,11 @@ void mqtt_command_handle(const char *topic, int topic_len,
         return;
     }
     
-    // Light power
+    // Light power - only change enable state, preserve freq and duty
     snprintf(expected_topic, sizeof(expected_topic), "%s/light/power/set", node_id);
     if (strcmp(topic_buf, expected_topic) == 0) {
         bool on = (strcmp(data_buf, "ON") == 0);
-        pwm_set_light(on, pwm_get_light_freq(), pwm_get_light_duty_x1000());
+        pwm_set_light_enable(on);  // Use new API that preserves settings
         save_and_publish_state();
         return;
     }
@@ -108,11 +108,11 @@ void mqtt_command_handle(const char *topic, int topic_len,
         return;
     }
     
-    // Sound power
+    // Sound power - only change enable state, preserve freq and duty
     snprintf(expected_topic, sizeof(expected_topic), "%s/sound/power/set", node_id);
     if (strcmp(topic_buf, expected_topic) == 0) {
         bool on = (strcmp(data_buf, "ON") == 0);
-        pwm_set_sound(on, pwm_get_sound_freq(), pwm_get_sound_duty_x1000());
+        pwm_set_sound_enable(on);  // Use new API that preserves settings
         save_and_publish_state();
         return;
     }
