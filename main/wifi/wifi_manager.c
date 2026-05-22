@@ -185,6 +185,14 @@ esp_err_t wifi_manager_start_softap(const char *ssid, const char *password)
 
 esp_err_t wifi_manager_stop_softap(void)
 {
+    // Check if WiFi driver is initialized before stopping
+    wifi_mode_t mode;
+    esp_err_t ret = esp_wifi_get_mode(&mode);
+    if (ret == ESP_ERR_WIFI_NOT_INIT) {
+        ESP_LOGI(TAG, "WiFi driver not initialized, skip stopping SoftAP");
+        return ESP_OK;
+    }
+    
     ESP_LOGI(TAG, "Stopping WiFi SoftAP");
     
     esp_wifi_stop();
