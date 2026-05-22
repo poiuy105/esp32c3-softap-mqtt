@@ -29,7 +29,7 @@ static cJSON* build_device_info(void)
 {
     cJSON *device = cJSON_CreateObject();
     cJSON_AddStringToObject(device, "name", device_info_get_device_name());
-    cJSON_AddStringToObject(device, "manufacturer", "Espressif");
+    cJSON_AddStringToObject(device, "manufacturer", "MrBoal");
     cJSON_AddStringToObject(device, "model", "ESP32-C3");
     cJSON_AddStringToObject(device, "identifiers", device_info_get_node_id());
 

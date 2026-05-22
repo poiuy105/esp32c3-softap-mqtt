@@ -16,7 +16,7 @@ const char* device_info_get_node_id(void);
 const char* device_info_get_mac_string(void);
 
 /**
- * @brief Get device name (e.g., "ESP32-C3 AA:BB:CC")
+ * @brief Get device name (e.g., "PWM Esp32c3 AA:BB:CC")
  * @return Device name string (static buffer, do not free)
  */
 const char* device_info_get_device_name(void);

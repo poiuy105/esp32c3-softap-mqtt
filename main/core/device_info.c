@@ -21,7 +21,7 @@ void device_info_init(void)
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     snprintf(node_id, sizeof(node_id), "esp32c3_%02x%02x%02x%02x",
              mac[2], mac[3], mac[4], mac[5]);
-    snprintf(device_name, sizeof(device_name), "ESP32-C3 %02X:%02X:%02X",
+    snprintf(device_name, sizeof(device_name), "PWM Esp32c3 %02X:%02X:%02X",
              mac[3], mac[4], mac[5]);
     
     ESP_LOGI(TAG, "Device ID: %s, MAC: %s", node_id, mac_str);
