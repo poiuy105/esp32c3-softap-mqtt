@@ -122,7 +122,7 @@ static void app_task(void *arg)
                     state_machine_trigger_event(EVENT_INIT_COMPLETE);
                     break;
 
-                case STATE_SOFTAP:
+                case STATE_SOFTAP: {
                     ESP_LOGI(TAG, "Starting SoftAP mode");
                     gpio_set_led_mode(LED_MODE_SLOW_BLINK);
                     char softap_ssid[32];
@@ -131,7 +131,36 @@ static void app_task(void *arg)
                     wifi_manager_start_softap(softap_ssid, "");
                     http_server_start();
                     dns_server_start(53, "192.168.4.1");
+                    
+                    // SOFTAP timeout: 5 minutes
+                    TickType_t softap_start_tick = xTaskGetTickCount();
+                    const uint32_t SOFTAP_TIMEOUT_MS = 5 * 60 * 1000;  // 5 minutes
+                    uint32_t last_log_min = 0;
+                    
+                    while (state_machine_get_current_state() == STATE_SOFTAP && !restart_pending) {
+                        esp_task_wdt_reset();  // Feed watchdog
+                        
+                        // Check timeout
+                        uint32_t elapsed_ms = (xTaskGetTickCount() - softap_start_tick) * portTICK_PERIOD_MS;
+                        uint32_t elapsed_min = elapsed_ms / 60000;
+                        
+                        // Log every minute
+                        if (elapsed_min != last_log_min) {
+                            last_log_min = elapsed_min;
+                            ESP_LOGI(TAG, "SOFTAP running for %lu min, waiting for config...", elapsed_min);
+                        }
+                        
+                        // Timeout check
+                        if (elapsed_ms > SOFTAP_TIMEOUT_MS) {
+                            ESP_LOGW(TAG, "SOFTAP timeout after 5 minutes, restarting...");
+                            vTaskDelay(pdMS_TO_TICKS(1000));
+                            esp_restart();
+                        }
+                        
+                        vTaskDelay(pdMS_TO_TICKS(1000));
+                    }
                     break;
+                }
 
                 case STATE_CONFIG: {
                     ESP_LOGI(TAG, "Connecting to WiFi...");
