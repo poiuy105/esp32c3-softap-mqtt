@@ -97,7 +97,21 @@ esp_err_t nvs_save_mqtt_config(const char *uri, uint16_t port, const char *user,
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
     if (err != ESP_OK) return err;
 
-    err = nvs_set_str(handle, NVS_KEY_MQTT_URI, uri);
+    // Auto-add mqtt:// prefix if not present
+    char full_uri[140] = {0};
+    if (uri && strlen(uri) > 0) {
+        if (strncmp(uri, "mqtt://", 7) == 0 ||
+            strncmp(uri, "mqtts://", 8) == 0 ||
+            strncmp(uri, "ws://", 5) == 0 ||
+            strncmp(uri, "wss://", 6) == 0) {
+            strncpy(full_uri, uri, sizeof(full_uri) - 1);
+        } else {
+            snprintf(full_uri, sizeof(full_uri), "mqtt://%s", uri);
+        }
+        ESP_LOGI(TAG, "MQTT URI with scheme: %s", full_uri);
+    }
+    
+    err = nvs_set_str(handle, NVS_KEY_MQTT_URI, full_uri);
     if (err != ESP_OK) {
         nvs_close(handle);
         return err;

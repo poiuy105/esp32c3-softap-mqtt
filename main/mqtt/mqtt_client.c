@@ -185,7 +185,8 @@ esp_err_t app_mqtt_connect(const char *broker_uri, uint16_t port,
                 .msg = "offline",
                 .qos = 1,
                 .retain = true,
-            }
+            },
+            .keepalive = 30,  // Short keepalive for faster offline detection (30s)
         },
         .network = {
             .reconnect_timeout_ms = 1000,
