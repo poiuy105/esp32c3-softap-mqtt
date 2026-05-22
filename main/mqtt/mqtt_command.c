@@ -8,6 +8,8 @@
 #include "esp_log.h"
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
 
 static const char *TAG = "mqtt_cmd";
 
@@ -18,10 +20,10 @@ static void save_and_publish_state(void)
         .led_state = gpio_get_led(),
         .light_enabled = pwm_get_light_enabled(),
         .light_freq = pwm_get_light_freq(),
-        .light_duty = pwm_get_light_duty_x10(),
+        .light_duty = pwm_get_light_duty_x1000(),
         .sound_enabled = pwm_get_sound_enabled(),
         .sound_freq = pwm_get_sound_freq(),
-        .sound_duty = pwm_get_sound_duty_x10(),
+        .sound_duty = pwm_get_sound_duty_x1000(),
     };
     nvs_save_device_state(&state);
     ha_discovery_publish_states();
@@ -82,7 +84,7 @@ void mqtt_command_handle(const char *topic, int topic_len,
     snprintf(expected_topic, sizeof(expected_topic), "%s/light/power/set", node_id);
     if (strcmp(topic_buf, expected_topic) == 0) {
         bool on = (strcmp(data_buf, "ON") == 0);
-        pwm_set_light(on, pwm_get_light_freq(), pwm_get_light_duty_x10());
+        pwm_set_light(on, pwm_get_light_freq(), pwm_get_light_duty_x1000());
         save_and_publish_state();
         return;
     }
@@ -91,16 +93,17 @@ void mqtt_command_handle(const char *topic, int topic_len,
     snprintf(expected_topic, sizeof(expected_topic), "%s/light/freq/set", node_id);
     if (strcmp(topic_buf, expected_topic) == 0) {
         uint32_t freq = (uint32_t)atoi(data_buf);
-        pwm_set_light(pwm_get_light_enabled(), freq, pwm_get_light_duty_x10());
+        pwm_set_light(pwm_get_light_enabled(), freq, pwm_get_light_duty_x1000());
         save_and_publish_state();
         return;
     }
     
-    // Light duty (x10: "453" = 45.3%)
+    // Light duty (e.g. "80.5" -> 80500 x1000)
     snprintf(expected_topic, sizeof(expected_topic), "%s/light/duty/set", node_id);
     if (strcmp(topic_buf, expected_topic) == 0) {
-        uint16_t duty_x10 = (uint16_t)atoi(data_buf);
-        pwm_set_light(pwm_get_light_enabled(), pwm_get_light_freq(), duty_x10);
+        double duty_percent = atof(data_buf);
+        uint32_t duty_x1000 = (uint32_t)(duty_percent * 1000.0 + 0.5);  // Round
+        pwm_set_light(pwm_get_light_enabled(), pwm_get_light_freq(), duty_x1000);
         save_and_publish_state();
         return;
     }
@@ -109,7 +112,7 @@ void mqtt_command_handle(const char *topic, int topic_len,
     snprintf(expected_topic, sizeof(expected_topic), "%s/sound/power/set", node_id);
     if (strcmp(topic_buf, expected_topic) == 0) {
         bool on = (strcmp(data_buf, "ON") == 0);
-        pwm_set_sound(on, pwm_get_sound_freq(), pwm_get_sound_duty_x10());
+        pwm_set_sound(on, pwm_get_sound_freq(), pwm_get_sound_duty_x1000());
         save_and_publish_state();
         return;
     }
@@ -118,16 +121,17 @@ void mqtt_command_handle(const char *topic, int topic_len,
     snprintf(expected_topic, sizeof(expected_topic), "%s/sound/freq/set", node_id);
     if (strcmp(topic_buf, expected_topic) == 0) {
         uint32_t freq = (uint32_t)atoi(data_buf);
-        pwm_set_sound(pwm_get_sound_enabled(), freq, pwm_get_sound_duty_x10());
+        pwm_set_sound(pwm_get_sound_enabled(), freq, pwm_get_sound_duty_x1000());
         save_and_publish_state();
         return;
     }
     
-    // Sound volume (x10: "750" = 75.0%)
+    // Sound volume (e.g. "55.5" -> 55500 x1000)
     snprintf(expected_topic, sizeof(expected_topic), "%s/sound/vol/set", node_id);
     if (strcmp(topic_buf, expected_topic) == 0) {
-        uint16_t vol_x10 = (uint16_t)atoi(data_buf);
-        pwm_set_sound(pwm_get_sound_enabled(), pwm_get_sound_freq(), vol_x10);
+        double vol_percent = atof(data_buf);
+        uint32_t vol_x1000 = (uint32_t)(vol_percent * 1000.0 + 0.5);  // Round
+        pwm_set_sound(pwm_get_sound_enabled(), pwm_get_sound_freq(), vol_x1000);
         save_and_publish_state();
         return;
     }

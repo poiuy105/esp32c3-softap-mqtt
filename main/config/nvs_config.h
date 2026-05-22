@@ -38,10 +38,10 @@ typedef struct {
     bool led_state;
     bool light_enabled;
     uint32_t light_freq;
-    uint16_t light_duty;    // x10 precision: 0~1000 (0.0%~100.0%)
+    uint32_t light_duty;    // x1000 precision: 0~100000 (0.000%~100.000%)
     bool sound_enabled;
     uint32_t sound_freq;
-    uint16_t sound_duty;    // x10 precision: 500~1000 (50.0%~100.0%)
+    uint32_t sound_duty;    // x1000 precision: 50000~100000 (50.000%~100.000%)
 } device_state_t;
 
 esp_err_t nvs_init_config(void);

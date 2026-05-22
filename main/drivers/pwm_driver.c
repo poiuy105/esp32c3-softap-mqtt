@@ -23,14 +23,14 @@ static SemaphoreHandle_t pwm_mutex = NULL;
 // APB clock frequency (80MHz on ESP32-C3)
 #define APB_CLK_FREQ_HZ    80000000
 
-// Current state (duty stored as x10: 0~1000 = 0.0%~100.0%)
+// Current state (duty stored as x1000: 0~100000 = 0.000%~100.000%)
 static struct {
     bool light_enabled;
     uint32_t light_freq;
-    uint16_t light_duty_x10;   // actual quantized value
+    uint32_t light_duty_x1000;   // actual quantized value
     bool sound_enabled;
     uint32_t sound_freq;
-    uint16_t sound_duty_x10;   // actual quantized value
+    uint32_t sound_duty_x1000;   // actual quantized value
 } state = {0};
 
 // Current resolution per timer
@@ -66,8 +66,8 @@ static esp_err_t configure_timer(ledc_timer_t timer_num, uint32_t freq_hz)
         sound_resolution = resolution;
     }
     
-    ESP_LOGD(TAG, "Timer %d: freq=%luHz, resolution=%d-bit, steps=%d",
-              timer_num, freq_hz, resolution, (1 << resolution) - 1);
+    ESP_LOGD(TAG, "Timer %d: freq=%luHz, resolution=%d-bit",
+              timer_num, freq_hz, resolution);
     
     ledc_timer_config_t timer_cfg = {
         .speed_mode = LEDC_SPEED_MODE,
@@ -81,40 +81,40 @@ static esp_err_t configure_timer(ledc_timer_t timer_num, uint32_t freq_hz)
 }
 
 /**
- * @brief Convert duty_x10 (0~1000) to LEDC duty value, then quantize back
+ * @brief Set duty and quantize back to x1000
  * 
- * Forward:  ledc_duty = (max_duty * duty_x10) / 1000
- * Reverse:  actual_x10 = (ledc_duty * 1000 + max_duty/2) / max_duty  (rounded)
+ * Forward:  ledc_duty = (max_duty * duty_x1000) / 100000
+ * Reverse:  actual_x1000 = (ledc_duty * 100000 + max_duty/2) / max_duty  (rounded)
  */
-static uint16_t set_and_quantize(ledc_channel_t channel, uint16_t duty_x10, uint8_t resolution)
+static uint32_t set_and_quantize(ledc_channel_t channel, uint32_t duty_x1000, uint8_t resolution)
 {
     uint32_t max_duty = (1 << resolution) - 1;
     
     // Clamp
-    if (duty_x10 > 1000) duty_x10 = 1000;
+    if (duty_x1000 > 100000) duty_x1000 = 100000;
     
     // Forward: convert to LEDC duty
-    uint32_t ledc_duty = (max_duty * duty_x10) / 1000;
+    uint32_t ledc_duty = (max_duty * duty_x1000) / 100000;
     
     // Set LEDC duty
     ledc_set_duty(LEDC_SPEED_MODE, channel, ledc_duty);
     ledc_update_duty(LEDC_SPEED_MODE, channel);
     
-    // Reverse: quantize back to x10 (rounded)
-    uint16_t actual_x10 = (uint16_t)((ledc_duty * 1000 + max_duty / 2) / max_duty);
+    // Reverse: quantize back to x1000 (rounded)
+    uint32_t actual_x1000 = (uint32_t)(((uint64_t)ledc_duty * 100000 + max_duty / 2) / max_duty);
     
     // Clamp result
-    if (actual_x10 > 1000) actual_x10 = 1000;
+    if (actual_x1000 > 100000) actual_x1000 = 100000;
     
-    ESP_LOGD(TAG, "duty_x10=%lu → ledc_duty=%lu/%lu → actual_x10=%lu (res=%d-bit)",
-             (unsigned long)duty_x10, (unsigned long)ledc_duty, (unsigned long)max_duty, (unsigned long)actual_x10, resolution);
+    ESP_LOGD(TAG, "duty_x1000=%lu -> ledc_duty=%lu/%u -> actual_x1000=%lu (res=%d-bit)",
+             duty_x1000, ledc_duty, max_duty, actual_x1000, resolution);
     
-    return actual_x10;
+    return actual_x1000;
 }
 
 esp_err_t pwm_driver_init(void)
 {
-    ESP_LOGI(TAG, "Initializing PWM driver (LEDC, x10 precision)");
+    ESP_LOGI(TAG, "Initializing PWM driver (LEDC, x1000 precision)");
     
     if (pwm_mutex == NULL) {
         pwm_mutex = xSemaphoreCreateMutex();
@@ -173,14 +173,16 @@ esp_err_t pwm_driver_init(void)
     return ESP_OK;
 }
 
-esp_err_t pwm_set_light(bool enable, uint32_t freq_hz, uint16_t duty_x10)
+esp_err_t pwm_set_light(bool enable, uint32_t freq_hz, uint32_t duty_x1000)
 {
-    ESP_LOGI(TAG, "Light: en=%d, freq=%luHz, duty=%u.%u%%",
-             enable, freq_hz, duty_x10 / 10, duty_x10 % 10);
+    uint32_t duty_percent = duty_x1000 / 1000;
+    uint32_t duty_tenth = (duty_x1000 % 1000) / 100;
+    ESP_LOGI(TAG, "Light: en=%d, freq=%luHz, duty=%lu.%lu%%",
+             enable, freq_hz, duty_percent, duty_tenth);
     
     // Clamp values
     if (freq_hz > FREQ_MAX) freq_hz = FREQ_MAX;
-    if (duty_x10 > DUTY_X10_LIGHT_MAX) duty_x10 = DUTY_X10_LIGHT_MAX;
+    if (duty_x1000 > DUTY_X1000_LIGHT_MAX) duty_x1000 = DUTY_X1000_LIGHT_MAX;
     
     PWM_LOCK();
     state.light_enabled = enable;
@@ -188,7 +190,7 @@ esp_err_t pwm_set_light(bool enable, uint32_t freq_hz, uint16_t duty_x10)
     
     esp_err_t ret = ESP_OK;
     
-    if (enable && freq_hz > 0 && duty_x10 > 0) {
+    if (enable && freq_hz > 0 && duty_x1000 > 0) {
         // Reconfigure timer for new frequency
         ret = configure_timer(LEDC_TIMER_LIGHT, freq_hz);
         if (ret != ESP_OK) {
@@ -197,26 +199,28 @@ esp_err_t pwm_set_light(bool enable, uint32_t freq_hz, uint16_t duty_x10)
         }
         
         // Set duty and quantize back to actual value
-        state.light_duty_x10 = set_and_quantize(LEDC_CHANNEL_LIGHT, duty_x10, light_resolution);
+        state.light_duty_x1000 = set_and_quantize(LEDC_CHANNEL_LIGHT, duty_x1000, light_resolution);
     } else {
         ledc_set_duty(LEDC_SPEED_MODE, LEDC_CHANNEL_LIGHT, 0);
         ledc_update_duty(LEDC_SPEED_MODE, LEDC_CHANNEL_LIGHT);
-        state.light_duty_x10 = 0;
+        state.light_duty_x1000 = 0;
     }
     
     PWM_UNLOCK();
     return ret;
 }
 
-esp_err_t pwm_set_sound(bool enable, uint32_t freq_hz, uint16_t duty_x10)
+esp_err_t pwm_set_sound(bool enable, uint32_t freq_hz, uint32_t duty_x1000)
 {
-    ESP_LOGI(TAG, "Sound: en=%d, freq=%luHz, duty=%u.%u%%",
-             enable, freq_hz, duty_x10 / 10, duty_x10 % 10);
+    uint32_t duty_percent = duty_x1000 / 1000;
+    uint32_t duty_tenth = (duty_x1000 % 1000) / 100;
+    ESP_LOGI(TAG, "Sound: en=%d, freq=%luHz, duty=%lu.%lu%%",
+             enable, freq_hz, duty_percent, duty_tenth);
     
     // Clamp values
     if (freq_hz > FREQ_MAX) freq_hz = FREQ_MAX;
-    if (duty_x10 < DUTY_X10_SOUND_MIN) duty_x10 = DUTY_X10_SOUND_MIN;
-    if (duty_x10 > DUTY_X10_SOUND_MAX) duty_x10 = DUTY_X10_SOUND_MAX;
+    if (duty_x1000 < DUTY_X1000_SOUND_MIN) duty_x1000 = DUTY_X1000_SOUND_MIN;
+    if (duty_x1000 > DUTY_X1000_SOUND_MAX) duty_x1000 = DUTY_X1000_SOUND_MAX;
     
     PWM_LOCK();
     state.sound_enabled = enable;
@@ -234,11 +238,11 @@ esp_err_t pwm_set_sound(bool enable, uint32_t freq_hz, uint16_t duty_x10)
             return ret;
         }
         
-        state.sound_duty_x10 = set_and_quantize(LEDC_CHANNEL_SOUND, duty_x10, sound_resolution);
+        state.sound_duty_x1000 = set_and_quantize(LEDC_CHANNEL_SOUND, duty_x1000, sound_resolution);
     } else {
         ledc_set_duty(LEDC_SPEED_MODE, LEDC_CHANNEL_SOUND, 0);
         ledc_update_duty(LEDC_SPEED_MODE, LEDC_CHANNEL_SOUND);
-        state.sound_duty_x10 = 0;
+        state.sound_duty_x1000 = 0;
     }
     
     PWM_UNLOCK();
@@ -260,9 +264,9 @@ uint32_t pwm_get_light_freq(void) {
     return val;
 }
 
-uint16_t pwm_get_light_duty_x10(void) {
+uint32_t pwm_get_light_duty_x1000(void) {
     PWM_LOCK();
-    uint16_t val = state.light_duty_x10;
+    uint32_t val = state.light_duty_x1000;
     PWM_UNLOCK();
     return val;
 }
@@ -281,9 +285,9 @@ uint32_t pwm_get_sound_freq(void) {
     return val;
 }
 
-uint16_t pwm_get_sound_duty_x10(void) {
+uint32_t pwm_get_sound_duty_x1000(void) {
     PWM_LOCK();
-    uint16_t val = state.sound_duty_x10;
+    uint32_t val = state.sound_duty_x1000;
     PWM_UNLOCK();
     return val;
 }
