@@ -56,11 +56,13 @@ jobs:
             fi
             
             if [ -n "$APP_BIN" ]; then
+              # Factory partition starts at 0x10000 (after bootloader at 0x0-0x7000, 
+              # partition table at 0x8000-0x8FFF, nvs at 0x9000-0xEFFF, phy_init at 0xF000)
               esptool.py --chip esp32c3 merge_bin -o build/merged.bin \
                 --flash_mode dio --flash_size 4MB --flash_freq 80m \
                 0x0 build/bootloader/bootloader.bin \
                 0x8000 build/partition_table/partition-table.bin \
-                0x20000 "$APP_BIN"
+                0x10000 "$APP_BIN"
               echo "=== Merged firmware created ==="
               ls -lh build/merged.bin
             fi
