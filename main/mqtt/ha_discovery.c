@@ -140,7 +140,7 @@ static esp_err_t publish_switch_config(const char *object_id, const char *name,
 static esp_err_t publish_number_config(const char *object_id, const char *name,
                                         const char *cmd_topic_suffix,
                                         double min_val, double max_val, double step,
-                                        const char *unit)
+                                        const char *unit, const char *mode)
 {
     const char *node_id = device_info_get_node_id();
     char topic[128];
@@ -168,6 +168,9 @@ static esp_err_t publish_number_config(const char *object_id, const char *name,
     cJSON_AddNumberToObject(root, "step", step);
     if (unit && strlen(unit) > 0) {
         cJSON_AddStringToObject(root, "unit_of_measurement", unit);
+    }
+    if (mode && strlen(mode) > 0) {
+        cJSON_AddStringToObject(root, "mode", mode);
     }
 
     cJSON_AddItemToObject(root, "device", build_device_info());
@@ -264,20 +267,20 @@ esp_err_t ha_discovery_publish_configs(void)
     // Light control switch
     publish_switch_config("light_power", "照明控制", "light/power");
 
-    // Light frequency number (0-150kHz)
-    publish_number_config("light_freq", "照明频率", "light/freq", 0, 150000, 100, "Hz");
+    // Light frequency number (0-150kHz, step=1Hz, mode=box)
+    publish_number_config("light_freq", "照明频率", "light/freq", 0, 150000, 1, "Hz", "box");
 
-    // Light duty number (0-100.0%, step=0.1, values transmitted as x10: 0-1000)
-    publish_number_config("light_duty", "照明亮度", "light/duty", 0, 100, 0.1, "%");
+    // Light duty number (0-100.0%, step=0.1, mode=box)
+    publish_number_config("light_duty", "照明亮度", "light/duty", 0, 100, 0.1, "%", "box");
 
     // Sound control switch
     publish_switch_config("sound_power", "声波控制", "sound/power");
 
-    // Sound frequency number (0-150kHz)
-    publish_number_config("sound_freq", "声波频率", "sound/freq", 0, 150000, 100, "Hz");
+    // Sound frequency number (0-150kHz, step=1Hz, mode=box)
+    publish_number_config("sound_freq", "声波频率", "sound/freq", 0, 150000, 1, "Hz", "box");
 
-    // Sound volume number (50.0-100.0%, step=0.1, values transmitted as x10: 500-1000)
-    publish_number_config("sound_vol", "声波音量", "sound/vol", 50, 100, 0.1, "%");
+    // Sound volume number (50.0-100.0%, step=0.1, mode=box)
+    publish_number_config("sound_vol", "声波音量", "sound/vol", 50, 100, 0.1, "%", "box");
 
     ESP_LOGI(TAG, "HA discovery configs published");
     return ESP_OK;
