@@ -106,8 +106,8 @@ static uint16_t set_and_quantize(ledc_channel_t channel, uint16_t duty_x10, uint
     // Clamp result
     if (actual_x10 > 1000) actual_x10 = 1000;
     
-    ESP_LOGD(TAG, "duty_x10=%u → ledc_duty=%lu/%u → actual_x10=%u (res=%d-bit)",
-             duty_x10, ledc_duty, max_duty, actual_x10, resolution);
+    ESP_LOGD(TAG, "duty_x10=%lu → ledc_duty=%lu/%lu → actual_x10=%lu (res=%d-bit)",
+             (unsigned long)duty_x10, (unsigned long)ledc_duty, (unsigned long)max_duty, (unsigned long)actual_x10, resolution);
     
     return actual_x10;
 }
