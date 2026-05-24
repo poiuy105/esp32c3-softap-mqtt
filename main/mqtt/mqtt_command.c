@@ -24,7 +24,13 @@ static void save_and_publish_state(void)
         .sound_duty = pwmGetSoundDuty(),
     };
     nvs_save_device_state(&state);
-    ha_discovery_publish_states();
+    
+    // Only publish to MQTT if connected to avoid blocking
+    if (app_mqtt_is_connected()) {
+        ha_discovery_publish_states();
+    } else {
+        ESP_LOGW(TAG, "MQTT not connected, skipping state publish");
+    }
 }
 
 void mqtt_command_subscribe_all(void)
