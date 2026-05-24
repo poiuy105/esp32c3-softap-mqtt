@@ -15,7 +15,7 @@
 #define PWM_FREQ_MAX        150000  // 150kHz
 #define PWM_DUTY_MIN        0
 #define PWM_DUTY_MAX        100000  // 100.000% (x1000)
-#define PWM_SOUND_DUTY_MIN  50000   // 50.000% (x1000)
+#define PWM_SOUND_DUTY_MIN  0       // 0.000% (x1000)
 
 // Entity enum
 typedef enum {

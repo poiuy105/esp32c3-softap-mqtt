@@ -280,7 +280,7 @@ esp_err_t ha_discovery_publish_configs(void)
     publish_number_config("sound_freq", "声波频率", "sound/freq", 0, 150000, 1, "Hz", "box");
 
     // Sound volume number (50.0-100.0%, step=0.1, mode=box)
-    publish_number_config("sound_vol", "声波音量", "sound/vol", 50, 100, 0.1, "%", "box");
+    publish_number_config("sound_vol", "声波音量", "sound/vol", 0, 100, 0.1, "%", "box");
 
     ESP_LOGI(TAG, "HA discovery configs published");
     return ESP_OK;
