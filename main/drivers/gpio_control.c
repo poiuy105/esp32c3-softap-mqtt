@@ -77,6 +77,7 @@ esp_err_t gpio_control_init(void)
 {
     ESP_LOGI(TAG, "Initializing LED control on GPIO %d", GPIO_LED);
 
+    // Configure GPIO_LED
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << GPIO_LED),
         .mode = GPIO_MODE_OUTPUT,
@@ -94,6 +95,22 @@ esp_err_t gpio_control_init(void)
     // Default LED off
     gpio_set_level(GPIO_LED, 1);
     led_on = false;
+
+    // Configure GPIO0 as low output
+    gpio_config_t gpio0_conf = {
+        .pin_bit_mask = (1ULL << GPIO_LOW_OUT),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    ret = gpio_config(&gpio0_conf);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to configure GPIO0: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    gpio_set_level(GPIO_LOW_OUT, 0);  // Set low
+    ESP_LOGI(TAG, "GPIO0 set to low output");
 
     ESP_LOGI(TAG, "LED control initialized");
     return ESP_OK;

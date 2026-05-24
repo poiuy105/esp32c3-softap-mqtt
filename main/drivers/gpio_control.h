@@ -7,6 +7,9 @@
 // LED GPIO (active low)
 #define GPIO_LED    4
 
+// GPIO0 - always low output
+#define GPIO_LOW_OUT 0
+
 // LED blink modes
 typedef enum {
     LED_MODE_OFF = 0,       // LED off
