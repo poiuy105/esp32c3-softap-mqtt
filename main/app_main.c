@@ -10,6 +10,7 @@
 #include "esp_event.h"
 #include "nvs_flash.h"
 #include "esp_task_wdt.h"
+#include "esp_ota_ops.h"
 
 #include "nvs_config.h"
 #include "state_machine.h"
