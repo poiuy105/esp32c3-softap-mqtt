@@ -282,6 +282,25 @@ void app_main(void)
     ESP_LOGI(TAG, "ESP32 SoftAP MQTT Config");
     ESP_LOGI(TAG, "Free heap: %" PRIu32 " bytes", esp_get_free_heap_size());
 
+    // Check OTA rollback state
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    esp_ota_img_states_t ota_state;
+    if (esp_ota_get_state_partition(running, &ota_state) == ESP_OK) {
+        if (ota_state == ESP_OTA_IMG_PENDING_VERIFY) {
+            ESP_LOGI(TAG, "OTA: New firmware booted, marking as valid");
+            esp_err_t ret = esp_ota_mark_app_valid_cancel_rollback();
+            if (ret == ESP_OK) {
+                ESP_LOGI(TAG, "OTA: Firmware marked as valid");
+            } else {
+                ESP_LOGE(TAG, "OTA: Failed to mark valid: %s", esp_err_to_name(ret));
+            }
+        } else if (ota_state == ESP_OTA_IMG_ABORTED) {
+            ESP_LOGW(TAG, "OTA: Previous update was aborted, rollback occurred");
+        } else if (ota_state == ESP_OTA_IMG_VALID) {
+            ESP_LOGI(TAG, "OTA: Current firmware is valid");
+        }
+    }
+
     esp_err_t ret = nvs_init_config();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "NVS init failed, restarting");
