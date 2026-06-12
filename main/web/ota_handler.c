@@ -24,8 +24,11 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
     esp_ota_handle_t ota_handle = NULL;
     const esp_partition_t *update_partition = NULL;
 
+    ESP_LOGI(TAG, "OTA POST request received");
+
     /* Check if already updating */
     if (ota_updating) {
+        ESP_LOGW(TAG, "OTA already in progress, rejecting request");
         httpd_resp_send_err(req, 503, "OTA already in progress");
         return ESP_FAIL;
     }
@@ -33,6 +36,8 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
 
     /* Get content length */
     int content_len = req->content_len;
+    ESP_LOGI(TAG, "OTA content length: %d bytes", content_len);
+    
     if (content_len <= 0) {
         ESP_LOGE(TAG, "Invalid content length: %d", content_len);
         httpd_resp_send_err(req, 400, "Invalid content length");

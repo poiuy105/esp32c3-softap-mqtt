@@ -36,6 +36,12 @@ esp_err_t http_server_start(void)
 {
     ESP_LOGI(TAG, "Starting HTTP server");
     
+    // Check if server is already running
+    if (server != NULL) {
+        ESP_LOGI(TAG, "HTTP server already running, skipping start");
+        return ESP_OK;
+    }
+    
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.lru_purge_enable = true;
     config.max_uri_handlers = 20;  // Increased for OTA handlers
