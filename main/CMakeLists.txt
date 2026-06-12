@@ -14,6 +14,7 @@ idf_component_register(
         "web/http_server.c"
         "web/api_handlers.c"
         "web/dns_server.c"
+        "web/ota_handler.c"
         "drivers/pwm_driver.c"
         "drivers/gpio_control.c"
         "drivers/button_driver.c"
@@ -36,4 +37,6 @@ idf_component_register(
         esp_http_server
         json
         driver
+        esp_ota_ops
+        app_update
 )

@@ -4,6 +4,7 @@
 #include "esp_http_server.h"
 #include "api_handlers.h"
 #include "web_page.h"
+#include "ota_handler.h"
 
 static const char *TAG = "http_server";
 static httpd_handle_t server = NULL;
@@ -37,7 +38,7 @@ esp_err_t http_server_start(void)
     
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.lru_purge_enable = true;
-    config.max_uri_handlers = 16;  // Increased from default 8
+    config.max_uri_handlers = 20;  // Increased for OTA handlers
     
     ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
     
@@ -51,6 +52,9 @@ esp_err_t http_server_start(void)
         httpd_register_uri_handler(server, &root_uri);
         
         api_handlers_register(server);
+
+        // Register OTA handlers
+        ota_handler_register();
 
         // Captive portal detection paths (Android / iOS / Windows / macOS)
         httpd_uri_t captive_uris[] = {
@@ -92,4 +96,9 @@ esp_err_t http_server_stop(void)
     }
     
     return ESP_OK;
+}
+
+httpd_handle_t httpd_get_server(void)
+{
+    return server;
 }
