@@ -12,7 +12,25 @@ static httpd_handle_t server = NULL;
 esp_err_t root_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html");
-    return httpd_resp_send(req, INDEX_HTML, strlen(INDEX_HTML));
+    httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+    
+    // Send large HTML in chunks to avoid truncation
+    size_t html_len = strlen(INDEX_HTML);
+    size_t chunk_size = 4096;
+    size_t sent = 0;
+    
+    while (sent < html_len) {
+        size_t to_send = (html_len - sent > chunk_size) ? chunk_size : (html_len - sent);
+        esp_err_t ret = httpd_resp_send_chunk(req, INDEX_HTML + sent, to_send);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to send HTML chunk");
+            return ret;
+        }
+        sent += to_send;
+    }
+    
+    // Send final empty chunk
+    return httpd_resp_send_chunk(req, NULL, 0);
 }
 
 static esp_err_t captive_redirect_handler(httpd_req_t *req) {
@@ -45,6 +63,7 @@ esp_err_t http_server_start(void)
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.lru_purge_enable = true;
     config.max_uri_handlers = 20;  // Increased for OTA handlers
+    config.stack_size = 8192;      // Increase stack for large HTML responses
     
     ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
     
