@@ -200,15 +200,15 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
     }
 
     if (content_len > update_partition->size) {
-        ESP_LOGE(TAG, "Firmware too large: %d > %d bytes", content_len, update_partition->size);
+        ESP_LOGE(TAG, "Firmware too large: %d > %lu bytes", content_len, (unsigned long)update_partition->size);
         httpd_resp_set_status(req, "413 Payload Too Large");
         httpd_resp_send(req, NULL, 0);
         ota_updating = false;
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "OTA update starting, firmware size: %d bytes, partition size: %d bytes",
-             content_len, update_partition->size);
+    ESP_LOGI(TAG, "OTA update starting, firmware size: %d bytes, partition size: %lu bytes",
+             content_len, (unsigned long)update_partition->size);
     ESP_LOGI(TAG, "Writing to partition subtype %d at offset 0x%lx",
              update_partition->subtype, (unsigned long)update_partition->address);
 
