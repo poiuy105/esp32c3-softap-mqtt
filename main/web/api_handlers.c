@@ -8,6 +8,7 @@
 #include "auth_middleware.h"
 #include "esp_ota_ops.h"
 #include "esp_system.h"
+#include "esp_netif.h"
 
 static const char *TAG = "api_handlers";
 
@@ -296,17 +297,22 @@ static esp_err_t get_status_handler(httpd_req_t *req)
     cJSON_AddStringToObject(root, "wifi_ssid", config.wifi_ssid);
     
     // IP address
-    esp_netif_ip_info_t ip_info;
-    if (wifi_manager_get_sta_ip(&ip_info) == ESP_OK) {
-        char ip_str[16];
-        snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
-        cJSON_AddStringToObject(root, "ip", ip_str);
+    esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (sta_netif) {
+        esp_netif_ip_info_t ip_info;
+        if (esp_netif_get_ip_info(sta_netif, &ip_info) == ESP_OK) {
+            char ip_str[16];
+            snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
+            cJSON_AddStringToObject(root, "ip", ip_str);
+        } else {
+            cJSON_AddStringToObject(root, "ip", "--");
+        }
     } else {
         cJSON_AddStringToObject(root, "ip", "--");
     }
     
     // WiFi RSSI
-    int8_t rssi = wifi_manager_get_sta_rssi();
+    int8_t rssi = wifi_manager_get_rssi();
     if (rssi != 0) {
         cJSON_AddNumberToObject(root, "rssi", rssi);
     }
