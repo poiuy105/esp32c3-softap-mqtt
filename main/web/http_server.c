@@ -9,10 +9,22 @@
 #include "admin_page.h"
 #include "ota_handler.h"
 #include "auth_middleware.h"
-#include "wifi_manager.h"
+#include "esp_netif.h"
 
 static const char *TAG = "http_server";
 static httpd_handle_t server = NULL;
+
+/* Check if STA has obtained an IP address */
+static bool is_sta_mode(void)
+{
+    esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (!sta_netif) return false;
+    
+    esp_netif_ip_info_t ip_info;
+    if (esp_netif_get_ip_info(sta_netif, &ip_info) != ESP_OK) return false;
+    
+    return (ip_info.ip.addr != 0);
+}
 
 esp_err_t config_page_handler(httpd_req_t *req)
 {
@@ -66,9 +78,9 @@ esp_err_t login_page_handler(httpd_req_t *req)
 static esp_err_t root_handler(httpd_req_t *req)
 {
     ESP_LOGI(TAG, "Root handler, WiFi state: %s", 
-             wifi_manager_is_sta_connected() ? "STA connected" : "not connected");
+             is_sta_mode() ? "STA connected" : "not connected");
     
-    if (wifi_manager_is_sta_connected()) {
+    if (is_sta_mode()) {
         // Device is connected to WiFi, show admin page
         return admin_page_handler(req);
     } else {
