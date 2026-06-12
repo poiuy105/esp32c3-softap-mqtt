@@ -188,6 +188,48 @@ static esp_err_t publish_number_config(const char *object_id, const char *name,
     return err;
 }
 
+// Publish a button discovery config
+static esp_err_t publish_button_config(const char *object_id, const char *name,
+                                        const char *cmd_topic_suffix,
+                                        const char *payload_press)
+{
+    const char *node_id = device_info_get_node_id();
+    char topic[128];
+    snprintf(topic, sizeof(topic), "homeassistant/button/%s/%s/config", node_id, object_id);
+
+    char cmd_topic[96];
+    snprintf(cmd_topic, sizeof(cmd_topic), "%s/%s/set", node_id, cmd_topic_suffix);
+
+    char unique_id[64];
+    snprintf(unique_id, sizeof(unique_id), "%s_%s", node_id, object_id);
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "name", name);
+    cJSON_AddStringToObject(root, "command_topic", cmd_topic);
+    cJSON_AddStringToObject(root, "unique_id", unique_id);
+    cJSON_AddStringToObject(root, "availability_topic", avail_topic);
+    cJSON_AddStringToObject(root, "payload_available", "online");
+    cJSON_AddStringToObject(root, "payload_not_available", "offline");
+    if (payload_press && strlen(payload_press) > 0) {
+        cJSON_AddStringToObject(root, "payload_press", payload_press);
+    }
+    cJSON_AddStringToObject(root, "device_class", "restart");
+
+    cJSON_AddItemToObject(root, "device", build_device_info());
+
+    char *json_str = cJSON_Print(root);
+    cJSON_Delete(root);
+
+    if (json_str == NULL) {
+        ESP_LOGE(TAG, "Failed to build JSON for button %s", object_id);
+        return ESP_FAIL;
+    }
+
+    esp_err_t err = app_mqtt_publish(topic, json_str, 1, 1);
+    free(json_str);
+    return err;
+}
+
 // Publish a binary_sensor discovery config
 static esp_err_t publish_binary_sensor_config(const char *object_id, const char *name,
                                                const char *device_class)
@@ -281,6 +323,9 @@ esp_err_t ha_discovery_publish_configs(void)
 
     // Sound volume number (50.0-100.0%, step=0.1, mode=box)
     publish_number_config("sound_vol", "声波音量", "sound/vol", 0, 100, 0.1, "%", "box");
+
+    // Restart device button
+    publish_button_config("restart", "重启设备", "restart", "RESTART");
 
     ESP_LOGI(TAG, "HA discovery configs published");
     return ESP_OK;

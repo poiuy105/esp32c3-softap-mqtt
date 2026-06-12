@@ -6,6 +6,9 @@
 #include "ha_discovery.h"
 #include "app_mqtt.h"
 #include "esp_log.h"
+#include "esp_system.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -57,6 +60,9 @@ void mqtt_command_subscribe_all(void)
     app_mqtt_subscribe(topic, 1);
     
     snprintf(topic, sizeof(topic), "%s/sound/vol/set", node_id);
+    app_mqtt_subscribe(topic, 1);
+    
+    snprintf(topic, sizeof(topic), "%s/restart/set", node_id);
     app_mqtt_subscribe(topic, 1);
     
     ESP_LOGI(TAG, "Subscribed to all command topics");
@@ -143,6 +149,18 @@ void mqtt_command_handle(const char *topic, int topic_len,
         pwmSetSoundDuty(vol_x1000);
         pwmApplySound();
         save_and_publish_state();
+        return;
+    }
+    
+    // Restart device
+    snprintf(expected_topic, sizeof(expected_topic), "%s/restart/set", node_id);
+    if (strcmp(topic_buf, expected_topic) == 0) {
+        ESP_LOGI(TAG, "Restart command received, rebooting...");
+        // Publish offline status before reboot so HA knows device is going away
+        ha_discovery_publish_offline();
+        // Small delay to allow MQTT message to be sent
+        vTaskDelay(pdMS_TO_TICKS(500));
+        esp_restart();
         return;
     }
     
