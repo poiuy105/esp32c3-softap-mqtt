@@ -37,6 +37,5 @@ idf_component_register(
         esp_http_server
         json
         driver
-        esp_ota_ops
         app_update
 )
