@@ -6,6 +6,8 @@
 #include "state_machine.h"
 #include "wifi_manager.h"
 #include "auth_middleware.h"
+#include "esp_ota_ops.h"
+#include "esp_system.h"
 
 static const char *TAG = "api_handlers";
 
@@ -288,6 +290,38 @@ static esp_err_t get_status_handler(httpd_req_t *req)
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "state", state_machine_get_state_name(state_machine_get_current_state()));
     
+    // Add device info for admin page
+    app_config_t config;
+    nvs_load_all_config(&config);
+    cJSON_AddStringToObject(root, "wifi_ssid", config.wifi_ssid);
+    
+    // IP address
+    esp_netif_ip_info_t ip_info;
+    if (wifi_manager_get_sta_ip(&ip_info) == ESP_OK) {
+        char ip_str[16];
+        snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
+        cJSON_AddStringToObject(root, "ip", ip_str);
+    } else {
+        cJSON_AddStringToObject(root, "ip", "--");
+    }
+    
+    // WiFi RSSI
+    int8_t rssi = wifi_manager_get_sta_rssi();
+    if (rssi != 0) {
+        cJSON_AddNumberToObject(root, "rssi", rssi);
+    }
+    
+    // Free heap
+    cJSON_AddNumberToObject(root, "heap_free", esp_get_free_heap_size());
+    
+    // Running partition
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    cJSON_AddStringToObject(root, "partition", running ? running->label : "unknown");
+    
+    // Uptime (using FreeRTOS tick count)
+    uint32_t uptime_sec = xTaskGetTickCount() / configTICK_RATE_HZ;
+    cJSON_AddNumberToObject(root, "uptime", uptime_sec);
+    
     char *json_str = cJSON_Print(root);
     cJSON_Delete(root);
     
@@ -300,6 +334,96 @@ static esp_err_t get_status_handler(httpd_req_t *req)
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, json_str, strlen(json_str));
     free(json_str);
+    
+    return ESP_OK;
+}
+
+static esp_err_t post_admin_credentials_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG, "POST /api/admin_credentials");
+    
+    // Check authentication
+    esp_err_t auth_ret = auth_check_request(req);
+    if (auth_ret != ESP_OK) {
+        return ESP_OK;
+    }
+    
+    // Check Content-Length
+    int content_len = req->content_len;
+    if (content_len <= 0 || content_len > 256) {
+        httpd_resp_set_status(req, "413 Payload Too Large");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Request too large\"}", HTTPD_RESP_USE_STRLEN);
+        return ESP_OK;
+    }
+    
+    char *buf = malloc(content_len + 1);
+    if (buf == NULL) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory error");
+        return ESP_OK;
+    }
+    
+    int ret = httpd_req_recv(req, buf, content_len);
+    if (ret <= 0) {
+        free(buf);
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Failed to read request body\"}", HTTPD_RESP_USE_STRLEN);
+        return ESP_OK;
+    }
+    buf[ret] = '\0';
+    
+    cJSON *root = cJSON_Parse(buf);
+    free(buf);
+    
+    if (!root) {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Invalid JSON\"}", HTTPD_RESP_USE_STRLEN);
+        return ESP_OK;
+    }
+    
+    const cJSON *username = cJSON_GetObjectItemCaseSensitive(root, "username");
+    const cJSON *password = cJSON_GetObjectItemCaseSensitive(root, "password");
+    
+    if (!cJSON_IsString(username) || !cJSON_IsString(password)) {
+        cJSON_Delete(root);
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Missing username or password\"}", HTTPD_RESP_USE_STRLEN);
+        return ESP_OK;
+    }
+    
+    if (strlen(username->valuestring) == 0 || strlen(password->valuestring) < 6) {
+        cJSON_Delete(root);
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Username required, password at least 6 chars\"}", HTTPD_RESP_USE_STRLEN);
+        return ESP_OK;
+    }
+    
+    esp_err_t err = nvs_save_admin_credentials(username->valuestring, password->valuestring);
+    cJSON_Delete(root);
+    
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save admin credentials: %s", esp_err_to_name(err));
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Failed to save credentials\"}", HTTPD_RESP_USE_STRLEN);
+        return ESP_OK;
+    }
+    
+    ESP_LOGI(TAG, "Admin credentials updated successfully");
+    
+    cJSON *resp = cJSON_CreateObject();
+    cJSON_AddBoolToObject(resp, "success", true);
+    cJSON_AddStringToObject(resp, "message", "Credentials updated, please re-login");
+    char *resp_str = cJSON_Print(resp);
+    cJSON_Delete(resp);
+    
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
+    free(resp_str);
     
     return ESP_OK;
 }
@@ -403,6 +527,14 @@ esp_err_t api_handlers_register(httpd_handle_t server)
         .user_ctx = NULL
     };
     httpd_register_uri_handler(server, &scan_get);
+    
+    httpd_uri_t admin_creds_post = {
+        .uri = "/api/admin_credentials",
+        .method = HTTP_POST,
+        .handler = post_admin_credentials_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &admin_creds_post);
     
     ESP_LOGI(TAG, "API handlers registered");
     return ESP_OK;
