@@ -245,6 +245,7 @@ static void app_task(void *arg)
                     ESP_LOGI(TAG, "System running!");
                     gpio_set_led_mode(LED_MODE_OFF);
                     stop_mqtt_timeout_timer();
+                    http_server_start();  // Start HTTP server for OTA and config in WiFi mode
                     ha_discovery_publish_states();
 
                     // Periodic state reporting (every 30 seconds)
