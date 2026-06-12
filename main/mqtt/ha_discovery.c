@@ -268,7 +268,7 @@ esp_err_t ha_discovery_publish_configs(void)
     publish_switch_config("light_power", "照明控制", "light/power");
 
     // Light frequency number (0-150kHz, step=1Hz, mode=box)
-    publish_number_config("light_freq", "照明频率", "light/freq", 0, 150000, 1, "Hz", "box");
+    publish_number_config("light_freq", "照明频率", "light/freq", 0, 150000, 0.1, "Hz", "box");
 
     // Light duty number (0-100.0%, step=0.1, mode=box)
     publish_number_config("light_duty", "照明亮度", "light/duty", 0, 100, 0.1, "%", "box");
