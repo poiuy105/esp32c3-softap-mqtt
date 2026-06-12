@@ -1,17 +1,14 @@
 #include "ota_handler.h"
+#include "http_server.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "esp_http_server.h"
-#include "http_parser.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
-#include <sys/param.h>
+#include <stdlib.h>
 
 static const char *TAG = "OTA";
-
-#define OTA_RECV_TIMEOUT_MS  10000
-#define OTA_VALIDATE_TIMEOUT_MS 5000
 
 static bool ota_updating = false;
 
@@ -29,7 +26,7 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
 
     /* Check if already updating */
     if (ota_updating) {
-        httpd_resp_send_err(req, HTTPD_503_SERVICE_UNAVAILABLE, "OTA already in progress");
+        httpd_resp_send_err(req, 503, "OTA already in progress");
         return ESP_FAIL;
     }
     ota_updating = true;
@@ -38,7 +35,7 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
     int content_len = req->content_len;
     if (content_len <= 0) {
         ESP_LOGE(TAG, "Invalid content length: %d", content_len);
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid content length");
+        httpd_resp_send_err(req, 400, "Invalid content length");
         ota_updating = false;
         return ESP_FAIL;
     }
@@ -49,19 +46,19 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
     update_partition = esp_ota_get_next_update_partition(NULL);
     if (update_partition == NULL) {
         ESP_LOGE(TAG, "No OTA partition found");
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "No OTA partition");
+        httpd_resp_send_err(req, 500, "No OTA partition");
         ota_updating = false;
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "Writing to partition subtype %d at offset 0x%x",
-             update_partition->subtype, update_partition->address);
+    ESP_LOGI(TAG, "Writing to partition subtype %d at offset 0x%lx",
+             update_partition->subtype, (unsigned long)update_partition->address);
 
     /* Begin OTA write */
-    ret = esp_ota_begin(update_partition, &ota_handle);
+    ret = esp_ota_begin(update_partition, OTA_SIZE_UNKNOWN, &ota_handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_begin failed: %s", esp_err_to_name(ret));
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "OTA begin failed");
+        httpd_resp_send_err(req, 500, "OTA begin failed");
         ota_updating = false;
         return ESP_FAIL;
     }
@@ -71,7 +68,7 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
     if (ota_buf == NULL) {
         ESP_LOGE(TAG, "Failed to allocate OTA buffer");
         esp_ota_end(ota_handle);
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory error");
+        httpd_resp_send_err(req, 500, "Memory error");
         ota_updating = false;
         return ESP_FAIL;
     }
@@ -84,10 +81,10 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
         if (recv_len <= 0) {
             if (recv_len == HTTPD_SOCK_ERR_TIMEOUT) {
                 ESP_LOGE(TAG, "OTA receive timeout");
-                httpd_resp_send_err(req, HTTPD_408_REQUEST_TIMEOUT, "Receive timeout");
+                httpd_resp_send_err(req, HTTPD_408_REQ_TIMEOUT, "Receive timeout");
             } else {
                 ESP_LOGE(TAG, "OTA receive error: %d", recv_len);
-                httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Receive error");
+                httpd_resp_send_err(req, 500, "Receive error");
             }
             free(ota_buf);
             esp_ota_end(ota_handle);
@@ -100,7 +97,7 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
             ESP_LOGE(TAG, "esp_ota_write failed: %s", esp_err_to_name(ret));
             free(ota_buf);
             esp_ota_end(ota_handle);
-            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Write failed");
+            httpd_resp_send_err(req, 500, "Write failed");
             ota_updating = false;
             return ESP_FAIL;
         }
@@ -121,7 +118,7 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
     ret = esp_ota_end(ota_handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_end failed: %s", esp_err_to_name(ret));
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "OTA validation failed");
+        httpd_resp_send_err(req, 500, "OTA validation failed");
         ota_updating = false;
         return ESP_FAIL;
     }
@@ -130,7 +127,7 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
     ret = esp_ota_set_boot_partition(update_partition);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_set_boot_partition failed: %s", esp_err_to_name(ret));
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Set boot partition failed");
+        httpd_resp_send_err(req, 500, "Set boot partition failed");
         ota_updating = false;
         return ESP_FAIL;
     }
@@ -173,6 +170,12 @@ esp_err_t ota_handler_register(void)
 {
     ESP_LOGI(TAG, "Registering OTA handlers");
 
+    httpd_handle_t server = httpd_get_server();
+    if (server == NULL) {
+        ESP_LOGE(TAG, "HTTP server not started, cannot register OTA handlers");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     httpd_uri_t ota_post = {
         .uri = "/api/ota",
         .method = HTTP_POST,
@@ -187,8 +190,8 @@ esp_err_t ota_handler_register(void)
         .user_ctx = NULL,
     };
 
-    httpd_register_uri_handler(httpd_get_server(), &ota_post);
-    httpd_register_uri_handler(httpd_get_server(), &ota_get);
+    httpd_register_uri_handler(server, &ota_post);
+    httpd_register_uri_handler(server, &ota_get);
 
     ESP_LOGI(TAG, "OTA handlers registered (POST /api/ota, GET /api/ota)");
     return ESP_OK;
