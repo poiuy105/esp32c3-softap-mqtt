@@ -383,3 +383,68 @@ esp_err_t nvs_load_device_state(device_state_t *state)
     
     return ESP_OK;
 }
+
+esp_err_t nvs_save_admin_credentials(const char *username, const char *password)
+{
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) return err;
+
+    err = nvs_set_str(handle, NVS_KEY_ADMIN_USERNAME, username);
+    if (err != ESP_OK) {
+        nvs_close(handle);
+        return err;
+    }
+    
+    err = nvs_set_str(handle, NVS_KEY_ADMIN_PASSWORD, password);
+    if (err != ESP_OK) {
+        nvs_close(handle);
+        return err;
+    }
+
+    err = nvs_commit(handle);
+    nvs_close(handle);
+    
+    ESP_LOGI(TAG, "Admin credentials saved successfully");
+    return err;
+}
+
+esp_err_t nvs_read_admin_credentials(char *username, size_t username_size, char *password, size_t password_size)
+{
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
+    if (err != ESP_OK) return err;
+
+    memset(username, 0, username_size);
+    memset(password, 0, password_size);
+    
+    err = nvs_get_str(handle, NVS_KEY_ADMIN_USERNAME, username, &username_size);
+    if (err != ESP_OK) {
+        nvs_close(handle);
+        return err;
+    }
+    
+    err = nvs_get_str(handle, NVS_KEY_ADMIN_PASSWORD, password, &password_size);
+    if (err != ESP_OK) {
+        nvs_close(handle);
+        return err;
+    }
+    
+    nvs_close(handle);
+    return ESP_OK;
+}
+
+bool nvs_admin_credentials_exist(void)
+{
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
+    if (err != ESP_OK) return false;
+    
+    char username[32];
+    size_t len = sizeof(username);
+    err = nvs_get_str(handle, NVS_KEY_ADMIN_USERNAME, username, &len);
+    
+    nvs_close(handle);
+    
+    return (err == ESP_OK && len > 1);
+}

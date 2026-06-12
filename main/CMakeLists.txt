@@ -15,6 +15,7 @@ idf_component_register(
         "web/api_handlers.c"
         "web/dns_server.c"
         "web/ota_handler.c"
+        "web/auth_middleware.c"
         "drivers/pwm_driver.c"
         "drivers/gpio_control.c"
         "drivers/button_driver.c"

@@ -13,6 +13,10 @@
 #define NVS_KEY_MQTT_PASS "mqtt_pass"
 #define NVS_KEY_FIRST_BOOT "first_boot"
 
+// Admin credentials keys
+#define NVS_KEY_ADMIN_USERNAME "admin_user"
+#define NVS_KEY_ADMIN_PASSWORD "admin_pass"
+
 // Device control keys
 #define NVS_KEY_LED_STATE      "led_state"
 #define NVS_KEY_LIGHT_ENABLE   "light_en"
@@ -59,5 +63,10 @@ bool nvs_is_config_valid(app_config_t *config);
 // Device state storage
 esp_err_t nvs_save_device_state(const device_state_t *state);
 esp_err_t nvs_load_device_state(device_state_t *state);
+
+// Admin credentials storage
+esp_err_t nvs_save_admin_credentials(const char *username, const char *password);
+esp_err_t nvs_read_admin_credentials(char *username, size_t username_size, char *password, size_t password_size);
+bool nvs_admin_credentials_exist(void);
 
 #endif

@@ -5,114 +5,17 @@
 #include "esp_http_server.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "auth_middleware.h"
 #include <string.h>
 #include <stdlib.h>
 
 static const char *TAG = "OTA";
-
-// OTA credentials (industrial default - should be configurable via NVS)
-#define OTA_USERNAME "admin"
-#define OTA_PASSWORD "synaflow2024"
 
 static bool ota_updating = false;
 
 bool ota_is_updating(void)
 {
     return ota_updating;
-}
-
-/* Base64 decode table */
-static const char base64_chars[] =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-/* Simple Base64 decode for Basic Auth */
-static int base64_decode(const char *input, char *output, int out_len)
-{
-    int i = 0, j = 0, k = 0;
-    unsigned char char_array_4[4], char_array_3[3];
-    int in_len = strlen(input);
-    int out_pos = 0;
-
-    while (in_len-- && (input[k] != '=') &&
-           (strchr(base64_chars, input[k]) != NULL)) {
-        char_array_4[i++] = input[k++];
-        if (i == 4) {
-            for (i = 0; i < 4; i++)
-                char_array_4[i] = strchr(base64_chars, char_array_4[i]) - base64_chars;
-
-            char_array_3[0] = (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
-            char_array_3[1] = ((char_array_4[1] & 0x0F) << 4) + ((char_array_4[2] & 0x3C) >> 2);
-            char_array_3[2] = ((char_array_4[2] & 0x03) << 6) + char_array_4[3];
-
-            for (i = 0; i < 3 && out_pos < out_len; i++)
-                output[out_pos++] = char_array_3[i];
-            i = 0;
-        }
-    }
-    output[out_pos] = '\0';
-    return out_pos;
-}
-
-/* Verify HTTP Basic Auth */
-static esp_err_t check_basic_auth(httpd_req_t *req)
-{
-    char auth_hdr[128] = {0};
-    size_t auth_len = sizeof(auth_hdr);
-
-    // Check if Authorization header exists
-    if (httpd_req_get_hdr_value_len(req, "Authorization") == 0) {
-        ESP_LOGW(TAG, "OTA request without Authorization header");
-        httpd_resp_set_status(req, "401 Unauthorized");
-        httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"OTA\"");
-        httpd_resp_send(req, NULL, 0);
-        return ESP_FAIL;
-    }
-
-    // Get Authorization header
-    if (httpd_req_get_hdr_value_str(req, "Authorization", auth_hdr, auth_len) != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to get Authorization header");
-        httpd_resp_set_status(req, "401 Unauthorized");
-        httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"OTA\"");
-        httpd_resp_send(req, NULL, 0);
-        return ESP_FAIL;
-    }
-
-    // Check if Basic auth
-    if (strncmp(auth_hdr, "Basic ", 6) != 0) {
-        ESP_LOGW(TAG, "Invalid auth scheme: %s", auth_hdr);
-        httpd_resp_set_status(req, "401 Unauthorized");
-        httpd_resp_send(req, NULL, 0);
-        return ESP_FAIL;
-    }
-
-    // Decode Base64
-    char decoded[64] = {0};
-    base64_decode(auth_hdr + 6, decoded, sizeof(decoded));
-
-    // Check credentials format (username:password)
-    char *colon = strchr(decoded, ':');
-    if (colon == NULL) {
-        ESP_LOGW(TAG, "Invalid auth format");
-        httpd_resp_set_status(req, "401 Unauthorized");
-        httpd_resp_send(req, NULL, 0);
-        return ESP_FAIL;
-    }
-
-    *colon = '\0';
-    char *username = decoded;
-    char *password = colon + 1;
-
-    // Verify credentials
-    if (strcmp(username, OTA_USERNAME) != 0 || strcmp(password, OTA_PASSWORD) != 0) {
-        ESP_LOGW(TAG, "OTA auth failed for user: %s", username);
-        httpd_resp_set_status(req, "401 Unauthorized");
-        httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"OTA\"");
-        httpd_resp_send(req, NULL, 0);
-        return ESP_FAIL;
-    }
-
-    ESP_LOGI(TAG, "OTA auth successful for user: %s", username);
-    return ESP_OK;
 }
 
 /* Verify firmware header (ESP32 magic byte) */
@@ -162,18 +65,19 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
 
     ESP_LOGI(TAG, "OTA POST request received");
 
-    /* Check authentication */
-    ret = check_basic_auth(req);
+    /* Check authentication via unified middleware */
+    ret = auth_check_request(req);
     if (ret != ESP_OK) {
-        return ret;  // Auth failed, response already sent
+        return ESP_OK; // Response already sent by auth middleware
     }
 
     /* Check if already updating */
     if (ota_updating) {
         ESP_LOGW(TAG, "OTA already in progress, rejecting request");
         httpd_resp_set_status(req, "503 Service Unavailable");
-        httpd_resp_send(req, NULL, 0);
-        return ESP_FAIL;
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"OTA already in progress\"}", HTTPD_RESP_USE_STRLEN);
+        return ESP_OK;
     }
     ota_updating = true;
 
@@ -184,9 +88,10 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
     if (content_len <= 0) {
         ESP_LOGE(TAG, "Invalid content length: %d", content_len);
         httpd_resp_set_status(req, "400 Bad Request");
-        httpd_resp_send(req, NULL, 0);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Invalid content length\"}", HTTPD_RESP_USE_STRLEN);
         ota_updating = false;
-        return ESP_FAIL;
+        return ESP_OK;
     }
 
     /* Check partition size */
@@ -194,17 +99,19 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
     if (update_partition == NULL) {
         ESP_LOGE(TAG, "No OTA partition found");
         httpd_resp_set_status(req, "500 Internal Server Error");
-        httpd_resp_send(req, NULL, 0);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"No OTA partition found\"}", HTTPD_RESP_USE_STRLEN);
         ota_updating = false;
-        return ESP_FAIL;
+        return ESP_OK;
     }
 
     if (content_len > update_partition->size) {
         ESP_LOGE(TAG, "Firmware too large: %d > %lu bytes", content_len, (unsigned long)update_partition->size);
         httpd_resp_set_status(req, "413 Payload Too Large");
-        httpd_resp_send(req, NULL, 0);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Firmware too large\"}", HTTPD_RESP_USE_STRLEN);
         ota_updating = false;
-        return ESP_FAIL;
+        return ESP_OK;
     }
 
     ESP_LOGI(TAG, "OTA update starting, firmware size: %d bytes, partition size: %lu bytes",
@@ -217,9 +124,10 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_begin failed: %s", esp_err_to_name(ret));
         httpd_resp_set_status(req, "500 Internal Server Error");
-        httpd_resp_send(req, NULL, 0);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"OTA begin failed\"}", HTTPD_RESP_USE_STRLEN);
         ota_updating = false;
-        return ESP_FAIL;
+        return ESP_OK;
     }
 
     /* Receive firmware data */
@@ -229,9 +137,10 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
         ESP_LOGE(TAG, "Failed to allocate OTA buffer");
         esp_ota_end(ota_handle);
         httpd_resp_set_status(req, "500 Internal Server Error");
-        httpd_resp_send(req, NULL, 0);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Memory allocation failed\"}", HTTPD_RESP_USE_STRLEN);
         ota_updating = false;
-        return ESP_FAIL;
+        return ESP_OK;
     }
 
     int remaining = content_len;
@@ -249,9 +158,10 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
             free(ota_buf);
             esp_ota_end(ota_handle);
             httpd_resp_set_status(req, "408 Request Timeout");
-            httpd_resp_send(req, NULL, 0);
+            httpd_resp_set_type(req, "application/json");
+            httpd_resp_send(req, "{\"error\":\"Receive timeout\"}", HTTPD_RESP_USE_STRLEN);
             ota_updating = false;
-            return ESP_FAIL;
+            return ESP_OK;
         }
 
         /* Verify firmware header on first chunk */
@@ -261,9 +171,10 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
                 free(ota_buf);
                 esp_ota_end(ota_handle);
                 httpd_resp_set_status(req, "400 Bad Request");
-                httpd_resp_send(req, NULL, 0);
+                httpd_resp_set_type(req, "application/json");
+                httpd_resp_send(req, "{\"error\":\"Invalid firmware header\"}", HTTPD_RESP_USE_STRLEN);
                 ota_updating = false;
-                return ESP_FAIL;
+                return ESP_OK;
             }
             header_verified = true;
         }
@@ -274,9 +185,10 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
             free(ota_buf);
             esp_ota_end(ota_handle);
             httpd_resp_set_status(req, "500 Internal Server Error");
-            httpd_resp_send(req, NULL, 0);
+            httpd_resp_set_type(req, "application/json");
+            httpd_resp_send(req, "{\"error\":\"OTA write failed\"}", HTTPD_RESP_USE_STRLEN);
             ota_updating = false;
-            return ESP_FAIL;
+            return ESP_OK;
         }
 
         remaining -= recv_len;
@@ -298,9 +210,10 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_end failed: %s", esp_err_to_name(ret));
         httpd_resp_set_status(req, "500 Internal Server Error");
-        httpd_resp_send(req, NULL, 0);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"OTA end failed\"}", HTTPD_RESP_USE_STRLEN);
         ota_updating = false;
-        return ESP_FAIL;
+        return ESP_OK;
     }
 
     /* Set boot partition */
@@ -308,9 +221,10 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_set_boot_partition failed: %s", esp_err_to_name(ret));
         httpd_resp_set_status(req, "500 Internal Server Error");
-        httpd_resp_send(req, NULL, 0);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"Set boot partition failed\"}", HTTPD_RESP_USE_STRLEN);
         ota_updating = false;
-        return ESP_FAIL;
+        return ESP_OK;
     }
 
     ESP_LOGI(TAG, "OTA update successful! Wrote %d bytes. Rebooting...", received);
@@ -332,10 +246,10 @@ static esp_err_t ota_post_handler(httpd_req_t *req)
 /* GET /api/ota - return current OTA info */
 static esp_err_t ota_info_handler(httpd_req_t *req)
 {
-    /* Check authentication */
-    esp_err_t ret = check_basic_auth(req);
+    /* Check authentication via unified middleware */
+    esp_err_t ret = auth_check_request(req);
     if (ret != ESP_OK) {
-        return ret;
+        return ESP_OK;
     }
 
     const esp_partition_t *running = esp_ota_get_running_partition();
