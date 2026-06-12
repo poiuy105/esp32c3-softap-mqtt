@@ -56,16 +56,8 @@ jobs:
             fi
             
             if [ -n "$APP_BIN" ]; then
-              # Standard merged.bin (bootloader + partition table + app at 0x10000)
-              esptool.py --chip esp32c3 merge_bin -o build/merged.bin \
-                --flash_mode dio --flash_size 4MB --flash_freq 80m \
-                0x0 build/bootloader/bootloader.bin \
-                0x8000 build/partition_table/partition-table.bin \
-                0x10000 "$APP_BIN"
-              echo "=== Merged firmware created ==="
-              ls -lh build/merged.bin
-              
-              # OTA merged.bin (bootloader + partition table + ota_data + app at 0x20000)
+              # OTA merged firmware (bootloader + partition table + ota_data + app)
+              # This is the primary firmware for flashing via esptool
               if [ -f "build/ota_data_initial.bin" ]; then
                 esptool.py --chip esp32c3 merge_bin -o build/ota_merged.bin \
                   --flash_mode dio --flash_size 4MB --flash_freq 80m \
@@ -73,20 +65,45 @@ jobs:
                   0x8000 build/partition_table/partition-table.bin \
                   0xF000 build/ota_data_initial.bin \
                   0x20000 "$APP_BIN"
-                echo "=== OTA Merged firmware created ==="
+                echo "=== OTA merged firmware created ==="
                 ls -lh build/ota_merged.bin
               fi
             fi
           fi
+
+      - name: Rename and Organize Artifacts
+        if: success()
+        run: |
+          mkdir -p build/artifacts
+          
+          # Primary firmware for esptool flashing (OTA partition layout)
+          if [ -f "build/ota_merged.bin" ]; then
+            cp build/ota_merged.bin build/artifacts/firmware.bin
+          fi
+          
+          # App-only binary for Web OTA upload
+          if [ -f "build/softap_mqtt.bin" ]; then
+            cp build/softap_mqtt.bin build/artifacts/app.bin
+          fi
+          
+          # Bootloader
+          if [ -f "build/bootloader/bootloader.bin" ]; then
+            cp build/bootloader/bootloader.bin build/artifacts/bootloader.bin
+          fi
+          
+          # Partition table
+          if [ -f "build/partition_table/partition-table.bin" ]; then
+            cp build/partition_table/partition-table.bin build/artifacts/partition-table.bin
+          fi
+          
+          echo "=== Artifacts organized ==="
+          ls -lh build/artifacts/
 
       - name: Upload Artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: esp32c3-firmware-${{ github.sha}}
-          path: |
-            build/merged.bin
-            build/*.bin
-            build/*.elf
+          path: build/artifacts/
           if-no-files-found: warn
           retention-days: 30
