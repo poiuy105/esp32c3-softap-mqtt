@@ -6,7 +6,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
-#include <sysparam.h>
+#include <sys/param.h>
 
 static const char *TAG = "OTA";
 
